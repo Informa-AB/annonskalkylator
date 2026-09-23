@@ -520,8 +520,9 @@
     //
     //   kostnad per kanal = pris × antal (införanden eller veckor)
     //   räckvidd per kanal = läsare, unika besökare eller mottagare
-    //   bruttovinst/kund   = snittaffär per år × antal år × bruttomarginal
-    //   nollpunkt          = total kostnad / bruttovinst per kund
+    //   intäkt per kund    = snittaffär per år × antal år
+    //   nollpunkt          = total kostnad / intäkt per kund
+    //   Kalkylen räknar på intäkt, inte vinst. Texterna säger intäkt överallt.
     // ══════════════════════════════════════════════════════════════════════════
     function AdvertiserCalc() {
       const [company, setCompany]  = useLS("med4_company", "");
@@ -529,7 +530,6 @@
       const [ch,      setCh]       = useLS("med4_channels", channelDefaults("Läkartidningen"));
       const [order,   setOrder]    = useLS("med4_order",   120000);
       const [years,   setYears]    = useLS("med4_years",        3);
-      const [margin,  setMargin]   = useLS("med4_margin",      45);
       const [toast,   setToast]    = useState(null);
 
       const upd = (id, patch) => setCh(Object.assign({}, ch, { [id]: Object.assign({}, ch[id], patch) }));
@@ -543,7 +543,7 @@
         setCh(next);   // titel utan siffra tömmer fälten, så att fel titels räckvidd aldrig ligger kvar
       };
 
-      const perCust = order * years * (margin / 100);
+      const perCust = order * years;
       const rows = CHANNELS.filter(c => ch[c.id] && ch[c.id].on).map(c => {
         const s = ch[c.id];
         const cost = s.price * s.units;
@@ -565,7 +565,8 @@
       const impossible = ready && single && single.audience > 0 && be > single.audience;
 
       const levels   = Array.from(new Set([1, 2, 3, 5, 10, firstPlus])).sort((a, b) => a - b).slice(0, 6);
-      const outcomes = levels.map(n => ({ n, net: n * perCust - cost, roi: cost > 0 ? ((n * perCust - cost) / cost) * 100 : 0 }));
+      const outcomes = levels.map(n => ({ n, rev: n * perCust, net: n * perCust - cost, perKr: cost > 0 ? (n * perCust) / cost : 0 }));
+      const kr2 = (n) => new Intl.NumberFormat("sv-SE", { minimumFractionDigits:2, maximumFractionDigits:2 }).format(n);
 
       const aBe  = useCountUp(be);
       const aOne = useCountUp(oneIn);
@@ -576,7 +577,7 @@
         return joinSv(withReach.map(r => f(r.audience) + " " + (r.c.id === "nl" ? "nyhetsbrevsmottagare" : r.c.who)));
       };
       const reachSentence = () => reachText(sek);
-      const plusLine = "Med " + firstPlus + (firstPlus === 1 ? " ny kund" : " nya kunder") + " är ni " + sek(firstPlus * perCust - cost) + " kr plus.";
+      const plusLine = "Med " + firstPlus + (firstPlus === 1 ? " ny kund" : " nya kunder") + " ger kampanjen " + sek(firstPlus * perCust - cost) + " kr mer i intäkt än den kostar.";
 
       function generatePDF() {
         const now = new Date();
@@ -625,10 +626,10 @@
         const chanTable = '<table><thead><tr><th>Kanal</th><th>Pris</th><th>Antal</th><th>Kostnad</th><th>Når</th></tr></thead><tbody>' +
           chanRows + '<tr class="sum"><td>Totalt</td><td></td><td></td><td>' + fmt(cost) + ' kr</td><td></td></tr></tbody></table>';
         const sources = rows.map(r => r.c.name + ': ' + titleData(title, r.c.id).source).join(' · ');
-        const outTable = '<table><thead><tr><th>Om kampanjen ger</th><th>Bruttovinst</th><th>Netto</th><th>Avkastning</th></tr></thead><tbody>' +
+        const outTable = '<table><thead><tr><th>Om kampanjen ger</th><th>Intäkt</th><th>Intäkt minus kostnad</th><th>Intäkt per annonskrona</th></tr></thead><tbody>' +
           outcomes.map(o => '<tr' + (o.n === firstPlus ? ' class="first"' : '') + '><td>' + o.n + (o.n === 1 ? ' ny kund' : ' nya kunder') + '</td>' +
-            '<td>' + fmt(o.n * perCust) + ' kr</td><td' + (o.net < 0 ? ' class="neg"' : '') + '>' + fmt(o.net) + ' kr</td>' +
-            '<td' + (o.roi < 0 ? ' class="neg"' : '') + '>' + fmt(o.roi) + ' %</td></tr>').join('') + '</tbody></table>';
+            '<td>' + fmt(o.rev) + ' kr</td><td' + (o.net < 0 ? ' class="neg"' : '') + '>' + fmt(o.net) + ' kr</td>' +
+            '<td>' + o.perKr.toFixed(2).replace('.', ',') + ' kr</td></tr>').join('') + '</tbody></table>';
         const heroNote = single && single.audience > 0
           ? 'Det motsvarar <b>1 av ' + fmt(oneIn) + '</b> ' + single.c.who + '. '
           : withReach.length > 0
@@ -640,18 +641,19 @@
             '<div class="doc-hdr">' + logo + '<div class="doc-hdr-r">' + (company ? company + '<br>' : '') + title + '<br>' + dateStr + '</div></div>' +
             '<div class="eyeb">Annonskalkyl</div>' +
             '<h1>Vad kampanjen behöver ge tillbaka<span style="color:#E85B7D">.</span></h1>' +
-            '<div class="lede">Kalkylen bygger bara på två saker ni vet: vad kampanjen kostar och vad en ny kund är värd för er. ' +
+            '<div class="lede">Kalkylen bygger bara på två saker ni vet: vad kampanjen kostar och vad en ny kund ger i intäkt. ' +
               'Den lovar inget utfall. Den visar hur många nya kunder som krävs för att kampanjen ska gå ihop.</div>' +
-            '<div class="hero"><div><div class="eyeb">Kampanjen går jämnt ut vid</div><div class="big">' + f1(be) + '</div><div class="unit">nya kunder</div></div>' +
-              '<div class="note">' + heroNote + 'Med ' + firstPlus + (firstPlus === 1 ? ' ny kund' : ' nya kunder') + ' är ni ' + fmt(firstPlus * perCust - cost) + ' kr plus.</div></div>' +
+            '<div class="hero"><div><div class="eyeb">Intäkten täcker kampanjen vid</div><div class="big">' + f1(be) + '</div><div class="unit">nya kunder</div></div>' +
+              '<div class="note">' + heroNote + 'Med ' + firstPlus + (firstPlus === 1 ? ' ny kund' : ' nya kunder') + ' ger kampanjen ' + fmt(firstPlus * perCust - cost) + ' kr mer i intäkt än den kostar.</div></div>' +
             '<div class="eyeb">Kampanjen</div>' + chanTable +
             '<div class="src">Räckvidd: ' + sources + '</div>' +
             '<div class="eyeb">Er affär</div>' +
             '<table><tbody>' +
-              '<tr><td>Bruttovinst per ny kund</td><td>' + fmt(order) + ' kr/år × ' + f2(years) + ' år × ' + margin + ' %</td><td>' + fmt(perCust) + ' kr</td></tr>' +
+              '<tr><td>Intäkt per ny kund</td><td>' + fmt(order) + ' kr/år × ' + f2(years) + ' år</td><td>' + fmt(perCust) + ' kr</td></tr>' +
               '<tr class="sum"><td>Nya kunder som krävs</td><td>' + fmt(cost) + ' kr ÷ ' + fmt(perCust) + ' kr</td><td>' + f1(be) + '</td></tr>' +
             '</tbody></table>' +
             '<div class="eyeb">Vad kampanjen ger</div>' + outTable +
+            '<div class="src" style="margin:-8px 0 18px">Kalkylen räknar på intäkt, inte vinst. Hur mycket av intäkten som blir vinst avgör er egen marginal.</div>' +
             '<div class="about"><div class="eyeb">Om Informa</div>' +
               '<p>Informa driver medieförsäljningen åt några av Sveriges starkaste medievarumärken. ' +
               'Vi har gjort det sedan 1977 och kan läsarna, annonsörerna och marknaden. ' +
@@ -762,12 +764,11 @@
               <div style={sectionHead}>Er affär</div>
               <NumberInput label="Snittaffär per kund och år" value={order} onChange={setOrder} suffix="kr" min={0} step={5000} />
               <NumberInput label="Antal år en kund stannar" value={years} onChange={setYears} suffix="år" min={0.5} step={0.5} />
-              <SliderInput label="Bruttomarginal" value={margin} min={0} max={100} step={1} onChange={setMargin} suffix="%" />
             </div>
 
             <div>
               <div style={heroCard}>
-                <div style={{ ...eyebrow, color:"rgba(241,236,227,0.62)" }}>Kampanjen går jämnt ut vid</div>
+                <div style={{ ...eyebrow, color:"rgba(241,236,227,0.62)" }}>Intäkten täcker kampanjen vid</div>
                 <span style={bigNum}>{ready ? num1(aBe) : "n/a"}</span>
                 <div style={{ fontFamily:SERIF, fontStyle:"italic", fontWeight:300,
                   fontSize:"1.35rem", color:"rgba(241,236,227,0.76)", marginTop:"0.6rem" }}>
@@ -781,7 +782,7 @@
                     : impossible
                     ? <React.Fragment>Det är fler kunder än det finns {single.c.who}. Kampanjen kostar för mycket i förhållande till vad en kund är värd.</React.Fragment>
                     : single && single.audience > 0
-                    ? <React.Fragment>Det motsvarar <Em>1 av {sek(aOne)}</Em> {single.c.who}. Med {firstPlus} {firstPlus === 1 ? "ny kund" : "nya kunder"} är ni {sek(firstPlus * perCust - cost)} kr plus.</React.Fragment>
+                    ? <React.Fragment>Det motsvarar <Em>1 av {sek(aOne)}</Em> {single.c.who}. {plusLine}</React.Fragment>
                     : withReach.length > 0
                     ? <React.Fragment>Kampanjen når {reachSentence()}. {plusLine}</React.Fragment>
                     : <React.Fragment>{plusLine} Fyll i räckvidd från mediakit så ser ni också hur stor andel av läsarna det motsvarar.</React.Fragment>}
@@ -808,7 +809,7 @@
                     </div>
                   ))}
                   <KeyRow k="Total kampanjkostnad" v={sek(cost) + " kr"} />
-                  <KeyRow k="Bruttovinst per ny kund" v={sek(perCust) + " kr"} />
+                  <KeyRow k="Intäkt per ny kund" v={sek(perCust) + " kr"} />
                 </div>
               )}
 
@@ -818,8 +819,8 @@
                   <table style={{ width:"100%", borderCollapse:"collapse", minWidth:320 }}>
                     <thead><tr>
                       <th style={{ ...th, textAlign:"left" }}>Om kampanjen ger</th>
-                      <th style={th}>Netto</th>
-                      <th style={th}>Avkastning</th>
+                      <th style={th}>Intäkt minus kostnad</th>
+                      <th style={th}>Per annonskrona</th>
                     </tr></thead>
                     <tbody>
                       {outcomes.map(o => (
@@ -829,7 +830,7 @@
                             {o.n === firstPlus && <span style={{ color:PINK }}>→ </span>}{o.n} {o.n === 1 ? "ny kund" : "nya kunder"}
                           </td>
                           <td style={{ ...tdc, color: o.net < 0 ? PINK : INK }}>{sek(o.net)} kr</td>
-                          <td style={{ ...tdc, color: o.roi < 0 ? PINK : INK }}>{sek(o.roi)} %</td>
+                          <td style={tdc}>{kr2(o.perKr)} kr</td>
                         </tr>
                       ))}
                     </tbody>
@@ -851,7 +852,7 @@
               </div>
 
               <Note>
-                Vi räknar på bruttovinst, inte omsättning, eftersom det är vinsten som ska betala kampanjen.
+                Kalkylen räknar på intäkt, inte vinst. Hur mycket av intäkten som blir vinst avgör er egen marginal.
                 {rows.length > 1 && " Samma person kan finnas i flera kanaler, så räckvidden per kanal läggs inte ihop."}
                 {missingReach && " En kanal saknar räckvidd. Nollpunkten stämmer ändå, men räckvidden behövs för att visa hur stor andel av läsarna det motsvarar."}
               </Note>
