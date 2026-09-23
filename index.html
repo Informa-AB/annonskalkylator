@@ -473,11 +473,11 @@
     // Kanaler och hur de köps. Webb och nyhetsbrev säljs per vecka på titlarna.
     const CHANNELS = [
       { id:"print", name:"Print",      priceLabel:"Pris per införande", unitLabel:"Antal införanden", unitSuffix:"st",
-        reachLabel:"Läsare per nummer",        who:"läsare",    defPrice:38000, defUnits:6, defTarget:30, maxUnits:24 },
+        reachLabel:"Läsare per nummer",        who:"läsare",    defPrice:38000, defUnits:6, maxUnits:24 },
       { id:"web",   name:"Webb",       priceLabel:"Pris per vecka",     unitLabel:"Antal veckor",     unitSuffix:"veckor",
-        reachLabel:"Unika besökare per vecka", who:"besökare",  defPrice:25000, defUnits:4, defTarget:20, maxUnits:52 },
+        reachLabel:"Unika besökare per vecka", who:"besökare",  defPrice:25000, defUnits:4, maxUnits:52 },
       { id:"nl",    name:"Nyhetsbrev", priceLabel:"Pris per vecka",     unitLabel:"Antal veckor",     unitSuffix:"veckor",
-        reachLabel:"Mottagare",                who:"mottagare", defPrice:20000, defUnits:4, defTarget:100, maxUnits:52, noTarget:true },
+        reachLabel:"Mottagare",                who:"mottagare", defPrice:20000, defUnits:4, maxUnits:52 },
     ];
 
     // Publika siffror per titel och kanal. reach 0 = ingen publik siffra, fylls i från mediakit.
@@ -505,7 +505,7 @@
       const o = {};
       CHANNELS.forEach(c => {
         const d = titleData(t, c.id);
-        o[c.id] = { on: c.id === "print", price: c.defPrice, units: c.defUnits, target: c.defTarget,
+        o[c.id] = { on: c.id === "print", price: c.defPrice, units: c.defUnits,
           reach: d.reach || 0, imps: d.imps || 0, open: d.open || 0 };
       });
       return o;
@@ -519,7 +519,7 @@
     //   är värd. Svaret är hur många nya kunder som krävs.
     //
     //   kostnad per kanal = pris × antal (införanden eller veckor)
-    //   målgrupp per kanal = räckvidd × andel i målgruppen
+    //   räckvidd per kanal = läsare, unika besökare eller mottagare
     //   bruttovinst/kund   = snittaffär per år × antal år × bruttomarginal
     //   nollpunkt          = total kostnad / bruttovinst per kund
     // ══════════════════════════════════════════════════════════════════════════
@@ -547,10 +547,9 @@
       const rows = CHANNELS.filter(c => ch[c.id] && ch[c.id].on).map(c => {
         const s = ch[c.id];
         const cost = s.price * s.units;
-        const audience = c.noTarget ? s.reach : s.reach * (s.target / 100);
-        const scope = c.noTarget ? "" : " i målgruppen";
+        const audience = s.reach;
         return {
-          c, s, cost, audience, scope,
+          c, s, cost, audience,
           cpm: audience > 0 ? s.price / (audience / 1000) : 0,           // per införande eller vecka
           effCpm: c.id === "web" && s.imps > 0 ? s.price / (s.imps / 1000) : 0,
           opens: c.id === "nl" && s.open > 0 ? s.reach * (s.open / 100) : 0,
@@ -574,9 +573,7 @@
       const withReach = rows.filter(r => r.audience > 0);
       const joinSv = (parts) => parts.length <= 1 ? (parts[0] || "") : parts.slice(0, -1).join(", ") + " och " + parts[parts.length - 1];
       const reachText = (f) => {
-        const tg = withReach.filter(r => !r.c.noTarget).map(r => f(r.audience) + " " + r.c.who);
-        const nl = withReach.filter(r => r.c.noTarget).map(r => f(r.audience) + " nyhetsbrevsmottagare");
-        return [tg.length ? joinSv(tg) + " i er målgrupp" : "", ...nl].filter(Boolean).join(" samt ");
+        return joinSv(withReach.map(r => f(r.audience) + " " + (r.c.id === "nl" ? "nyhetsbrevsmottagare" : r.c.who)));
       };
       const reachSentence = () => reachText(sek);
       const plusLine = "Med " + firstPlus + (firstPlus === 1 ? " ny kund" : " nya kunder") + " är ni " + sek(firstPlus * perCust - cost) + " kr plus.";
@@ -633,7 +630,7 @@
             '<td>' + fmt(o.n * perCust) + ' kr</td><td' + (o.net < 0 ? ' class="neg"' : '') + '>' + fmt(o.net) + ' kr</td>' +
             '<td' + (o.roi < 0 ? ' class="neg"' : '') + '>' + fmt(o.roi) + ' %</td></tr>').join('') + '</tbody></table>';
         const heroNote = single && single.audience > 0
-          ? 'Det motsvarar <b>1 av ' + fmt(oneIn) + '</b> ' + single.c.who + (single.c.noTarget ? '' : ' i er målgrupp') + '. '
+          ? 'Det motsvarar <b>1 av ' + fmt(oneIn) + '</b> ' + single.c.who + '. '
           : withReach.length > 0
           ? 'Kampanjen når ' + reachText(fmt) + '. '
           : '';
@@ -758,10 +755,6 @@
                       <SliderInput label="Öppningsgrad" value={s.open} min={0} max={100} step={1}
                         onChange={v => upd(c.id, { open: v })} suffix="%" hint="Valfritt, från mediakit" />
                     )}
-                    {!c.noTarget && (
-                      <SliderInput label={"Andel av " + c.who + "na som är er målgrupp"} value={s.target} min={0} max={100} step={1}
-                        onChange={v => upd(c.id, { target: v })} suffix="%" />
-                    )}
                   </div>
                 );
               })}
@@ -786,12 +779,12 @@
                     : !ready
                     ? <React.Fragment>Fyll i pris och vad en kund är värd så räknar vi ut nollpunkten.</React.Fragment>
                     : impossible
-                    ? <React.Fragment>Det är fler kunder än det finns {single.c.who} i målgruppen. Kampanjen kostar för mycket i förhållande till vad en kund är värd.</React.Fragment>
+                    ? <React.Fragment>Det är fler kunder än det finns {single.c.who}. Kampanjen kostar för mycket i förhållande till vad en kund är värd.</React.Fragment>
                     : single && single.audience > 0
-                    ? <React.Fragment>Det motsvarar <Em>1 av {sek(aOne)}</Em> {single.c.who}{single.c.noTarget ? "" : " i er målgrupp"}. Med {firstPlus} {firstPlus === 1 ? "ny kund" : "nya kunder"} är ni {sek(firstPlus * perCust - cost)} kr plus.</React.Fragment>
+                    ? <React.Fragment>Det motsvarar <Em>1 av {sek(aOne)}</Em> {single.c.who}. Med {firstPlus} {firstPlus === 1 ? "ny kund" : "nya kunder"} är ni {sek(firstPlus * perCust - cost)} kr plus.</React.Fragment>
                     : withReach.length > 0
                     ? <React.Fragment>Kampanjen når {reachSentence()}. {plusLine}</React.Fragment>
-                    : <React.Fragment>{plusLine} Fyll i räckvidd från mediakit så ser ni också hur stor andel av målgruppen det motsvarar.</React.Fragment>}
+                    : <React.Fragment>{plusLine} Fyll i räckvidd från mediakit så ser ni också hur stor andel av läsarna det motsvarar.</React.Fragment>}
                 </HeroNote>
               </div>
 
@@ -806,9 +799,9 @@
                       </div>
                       <div style={{ fontSize:"0.75rem", color:INK3, marginTop:"0.25rem", lineHeight:1.6 }}>
                         {sek(r.s.price)} kr × {r.s.units} {r.c.unitSuffix} · {r.audience > 0
-                          ? "når " + sek(r.audience) + " " + r.c.who + r.scope + (r.c.id === "print" ? " per nummer" : " per vecka")
+                          ? "når " + sek(r.audience) + " " + r.c.who + (r.c.id === "print" ? " per nummer" : " per vecka")
                           : "räckvidd saknas"}
-                        {r.audience > 0 && <React.Fragment> · {sek(r.cpm)} kr per tusen {r.c.noTarget ? "mottagare" : "i målgruppen"} och {r.c.id === "print" ? "införande" : "vecka"}</React.Fragment>}
+                        {r.audience > 0 && <React.Fragment> · {sek(r.cpm)} kr per tusen {r.c.who} och {r.c.id === "print" ? "införande" : "vecka"}</React.Fragment>}
                         {r.effCpm > 0 && <React.Fragment> · {sek(r.effCpm)} kr per tusen visningar</React.Fragment>}
                         {r.opens > 0 && <React.Fragment> · {sek(r.opens)} öppnar varje utskick</React.Fragment>}
                       </div>
@@ -860,7 +853,7 @@
               <Note>
                 Vi räknar på bruttovinst, inte omsättning, eftersom det är vinsten som ska betala kampanjen.
                 {rows.length > 1 && " Samma person kan finnas i flera kanaler, så räckvidden per kanal läggs inte ihop."}
-                {missingReach && " En kanal saknar räckvidd. Nollpunkten stämmer ändå, men räckvidden behövs för att visa hur stor andel av målgruppen det motsvarar."}
+                {missingReach && " En kanal saknar räckvidd. Nollpunkten stämmer ändå, men räckvidden behövs för att visa hur stor andel av läsarna det motsvarar."}
               </Note>
             </div>
           </div>
