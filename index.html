@@ -470,164 +470,64 @@
     const Em = ({ children }) => <strong style={{ color:ROSA, fontWeight:500 }}>{children}</strong>;
     const sectionHead = { ...eyebrow, marginTop:"1.75rem", paddingTop:"1.5rem", borderTop:`1px solid ${HAIR2}` };
 
+    // Publika räckviddssiffror per titel. Saknas siffra fyller annonsören i från mediakit.
+    const TITLE_DATA = {
+      "Läkartidningen":     { reach: 48900,  source: "TS-upplaga 48 900 ex, 21 nr/år (Läkartidningen)" },
+      "Dagens Samhälle":    { reach: 41000,  source: "41 000 läsare per vecka i print (Orvesto 2024)" },
+      "Ny Teknik":          { reach: 162000, source: "162 000 läsare per utgåva (Orvesto 2025)" },
+      "Energi & Miljö":     { reach: 0, source: "Ingen publik siffra, fyll i från mediakit" },
+      "Aktuell Hållbarhet": { reach: 0, source: "Ingen publik siffra, fyll i från mediakit" },
+      "Besöksliv":          { reach: 0, source: "Ingen publik siffra, fyll i från mediakit" },
+      "Annan titel":        { reach: 0, source: "Fyll i från mediakit" },
+    };
+
     // ══════════════════════════════════════════════════════════════════════════
     // 1. För annonsörer: vad krävs för att annonsen ska gå ihop?
-    //    Vyn gissar inte på respons. Den räknar bara nollpunkten.
+    //
+    //   Kalkylen gissar inte på observationsvärde, respons eller konvertering.
+    //   Den bygger bara på det annonsören vet: vad kampanjen kostar och vad en
+    //   ny kund är värd. Svaret är hur många nya kunder som krävs.
+    //
+    //   målgrupp          = läsare per nummer × andel i målgruppen
+    //   bruttovinst/kund  = snittaffär per år × antal år × bruttomarginal
+    //   nollpunkt         = kampanjkostnad / bruttovinst per kund
     // ══════════════════════════════════════════════════════════════════════════
     function AdvertiserCalc() {
-      const [title,    setTitle]    = useLS("med2_ex_title",   "Läkartidningen");
-      const [price,    setPrice]    = useLS("med2_ex_price",    38000);
-      const [runs,     setRuns]     = useLS("med2_ex_runs",         6);
-      const [audience, setAudience] = useLS("med2_ex_audience", 14000);
-      const [value,    setValue]    = useLS("med2_ex_value",   162000);
+      const [company, setCompany] = useLS("med3_company", "");
+      const [title,   setTitleRaw] = useLS("med3_title",  "Läkartidningen");
+      const [price,   setPrice]   = useLS("med3_price",    38000);
+      const [runs,    setRuns]    = useLS("med3_runs",         6);
+      const [reach,   setReach]   = useLS("med3_reach",    48900);
+      const [target,  setTarget]  = useLS("med3_target",      30);
+      const [order,   setOrder]   = useLS("med3_order",   120000);
+      const [years,   setYears]   = useLS("med3_years",        3);
+      const [margin,  setMargin]  = useLS("med3_margin",      45);
+      const [toast,   setToast]   = useState(null);
+
+      const td = TITLE_DATA[title] || TITLE_DATA["Annan titel"];
+      const setTitle = (t) => {
+        setTitleRaw(t);
+        const d = TITLE_DATA[t];
+        setReach(d && d.reach > 0 ? d.reach : 0);   // ingen siffra: töm så att fel titels räckvidd inte ligger kvar
+      };
 
       const cost      = price * runs;
-      const be        = value > 0 ? cost / value : 0;             // kunder som krävs
-      const oneIn     = be > 0 ? audience / be : 0;               // 1 av N läsare
+      const audience  = reach * (target / 100);
+      const perCust   = order * years * (margin / 100);
+      const be        = perCust > 0 ? cost / perCust : 0;
+      const oneIn     = be > 0 ? audience / be : 0;
       const cpm       = audience > 0 ? price / (audience / 1000) : 0;
       const perReader = audience > 0 ? cost / audience : 0;
-      const whole     = Math.max(1, Math.ceil(be - 1e-9));        // första hela antalet kunder över nollpunkten
-      const plusAt    = whole * value - cost;
+      const firstPlus = Math.max(1, Math.ceil(be - 1e-9));
+      const ready     = perCust > 0 && audience > 0;
+      const impossible = ready && be > audience;
+
+      // Tabell: vad kampanjen ger vid olika antal nya kunder
+      const levels = Array.from(new Set([1, 2, 3, 5, 10, firstPlus])).sort((a, b) => a - b).slice(0, 6);
+      const outcomes = levels.map(n => ({ n, net: n * perCust - cost, roi: cost > 0 ? ((n * perCust - cost) / cost) * 100 : 0 }));
 
       const aBe  = useCountUp(be);
       const aOne = useCountUp(oneIn);
-
-      return (
-        <div style={{ maxWidth:1000, margin:"0 auto" }}>
-          <div className="print-header">
-            <Wordmark size="2rem" />
-            <div style={{ fontSize:"1rem", color:INK2 }}>Annonskalkyl · {title} · {new Date().toLocaleDateString("sv-SE")}</div>
-          </div>
-
-          <div style={{ textAlign:"center", marginBottom:"2.75rem" }}>
-            <h1 style={{ fontFamily:SERIF, fontSize:"clamp(1.85rem,5vw,3.1rem)", fontWeight:300,
-              color:INK, margin:"0 0 1rem", lineHeight:1.12, letterSpacing:"-0.01em" }}>
-              Vad annonsen behöver ge tillbaka<span style={{ color:PINK }}>.</span>
-            </h1>
-            <p style={{ color:INK2, fontSize:"1rem", maxWidth:"54ch", margin:"0 auto" }}>
-              Fyll i vad kampanjen kostar och vad en ny kund är värd för er. Kalkylen visar hur många
-              kunder som krävs för att annonsen ska gå ihop, utan att gissa på respons.
-            </p>
-          </div>
-
-          <div className="split" style={split}>
-            <div style={card}>
-              <div style={eyebrow}>Kampanjen</div>
-              <SelectInput label="Titel" value={title} onChange={setTitle} options={TITLES} />
-              <SliderInput label="Pris per införande" value={price} min={0} max={300000} step={1000}
-                onChange={setPrice} suffix="kr" />
-              <SliderInput label="Antal införanden" value={runs} min={1} max={24} step={1}
-                onChange={setRuns} suffix="st" />
-              <SliderInput label="Läsare i er målgrupp per nummer" value={audience} min={0} max={100000} step={500}
-                onChange={setAudience} suffix="st" hint="Från titelns mediakit" />
-
-              <div style={sectionHead}>Er affär</div>
-              <NumberInput label="Bruttovinst per ny kund" value={value} onChange={setValue} suffix="kr" min={0} step={5000}
-                hint="Snittaffär × marginal × antal år kunden stannar" />
-            </div>
-
-            <div>
-              <div style={heroCard}>
-                <div style={{ ...eyebrow, color:"rgba(241,236,227,0.62)" }}>Annonsen går jämnt ut vid</div>
-                <span style={bigNum}>{value > 0 ? num1(aBe) : "n/a"}</span>
-                <div style={{ fontFamily:SERIF, fontStyle:"italic", fontWeight:300,
-                  fontSize:"1.35rem", color:"rgba(241,236,227,0.76)", marginTop:"0.6rem" }}>
-                  nya kunder
-                </div>
-                <HeroNote>
-                  {value <= 0
-                    ? <React.Fragment>Fyll i bruttovinst per ny kund så räknar vi ut nollpunkten.</React.Fragment>
-                    : be > audience && audience > 0
-                    ? <React.Fragment>Det är fler kunder än det finns läsare i målgruppen. Priset är för högt i förhållande till vad en kund är värd.</React.Fragment>
-                    : be <= 1
-                    ? <React.Fragment>En enda ny kund räcker. Den ger <Em>{sek(plusAt)} kr</Em> mer än kampanjen kostar.</React.Fragment>
-                    : <React.Fragment>Det motsvarar <Em>1 av {sek(aOne)}</Em> läsare i er målgrupp.
-                        Med {whole} nya kunder är ni {sek(plusAt)} kr plus.</React.Fragment>}
-                </HeroNote>
-              </div>
-
-              <div style={{ ...card, marginTop:"1.25rem" }}>
-                <KeyRow k="Total kampanjkostnad" v={sek(cost) + " kr"} />
-                <KeyRow k="Kostnad per tusen läsare i målgruppen, per införande" v={sek(cpm) + " kr"} />
-                <KeyRow k="Kostnad per läsare i målgruppen, hela kampanjen" v={dec1(perReader) + " kr"} />
-                <KeyRow k="Bruttovinst per ny kund" v={sek(value) + " kr"} />
-                <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between",
-                  gap:"1rem", paddingTop:"0.8rem" }}>
-                  <span style={{ fontSize:"0.86rem", color:INK2 }}>Nya kunder som krävs</span>
-                  <span style={{ fontFamily:SERIF, fontSize:"1.6rem", color:INK }}>{value > 0 ? num1(be) : "n/a"}</span>
-                </div>
-              </div>
-
-              <Note>
-                Här räknar vi på bruttovinst, inte omsättning, eftersom det är vinsten som ska betala annonsen.
-                Vill ni räkna på väntat utfall med respons och konvertering, använd ROI-kalkylen.
-              </Note>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // ══════════════════════════════════════════════════════════════════════════
-    // 2. ROI-kalkyl: från läsare till affär, med PDF
-    //
-    //   målgrupp      = läsare per nummer × andel i målgruppen
-    //   ser annonsen  = målgrupp × (1 − (1 − observationsvärde)^antal införanden)
-    //   förfrågningar = ser annonsen × andel som hör av sig
-    //   nya kunder    = förfrågningar × andel som blir kund
-    //   bruttovinst   = nya kunder × snittaffär per år × år × marginal
-    //   netto         = bruttovinst − kampanjkostnad
-    // ══════════════════════════════════════════════════════════════════════════
-    function roiModel(p, respPct) {
-      const cost      = p.price * p.runs;
-      const audience  = p.reach * (p.target / 100);
-      const seenShare = 1 - Math.pow(1 - clamp(p.obs, 0, 100) / 100, p.runs);
-      const seen      = audience * seenShare;
-      const leads     = seen * (respPct / 100);
-      const customers = leads * (p.conv / 100);
-      const perCust   = p.order * p.years * (p.margin / 100);
-      const profit    = customers * perCust;
-      const net       = profit - cost;
-      const be        = perCust > 0 ? cost / perCust : 0;
-      const beLeads   = p.conv > 0 ? be / (p.conv / 100) : Infinity;
-      return {
-        cost, audience, seenShare, seen, leads, customers, perCust, profit, net, be, beLeads,
-        revenue: customers * p.order * p.years,
-        roi:    cost > 0 ? (net / cost) * 100 : 0,
-        cpm:    audience > 0 ? p.price / (audience / 1000) : 0,
-        cpl:    leads > 0 ? cost / leads : 0,
-        cac:    customers > 0 ? cost / customers : 0,
-        beResp: seen > 0 && isFinite(beLeads) ? (beLeads / seen) * 100 : Infinity,
-      };
-    }
-
-    function OfferCalc() {
-      const [company, setCompany] = useLS("med2_off_company", "");
-      const [title,   setTitle]   = useLS("med2_off_title",   "Läkartidningen");
-      const [price,   setPrice]   = useLS("med2_off_price",    38000);
-      const [runs,    setRuns]    = useLS("med2_off_runs",         6);
-      const [reach,   setReach]   = useLS("med2_off_reach",    40000);
-      const [target,  setTarget]  = useLS("med2_off_target",      35);
-      const [obs,     setObs]     = useLS("med2_off_obs",         25);
-      const [resp,    setResp]    = useLS("med2_off_resp",       0.2);
-      const [conv,    setConv]    = useLS("med2_off_conv",        10);
-      const [order,   setOrder]   = useLS("med2_off_order",   120000);
-      const [years,   setYears]   = useLS("med2_off_years",        3);
-      const [margin,  setMargin]  = useLS("med2_off_margin",      45);
-      const [toast,   setToast]   = useState(null);
-
-      const P = { price, runs, reach, target, obs, conv, order, years, margin };
-      const r = roiModel(P, resp);
-      const scenarios = [
-        { label:"Halva responsen",  resp: resp / 2 },
-        { label:"Era antaganden",   resp: resp, mid:true },
-        { label:"Dubbla responsen", resp: resp * 2 },
-      ].map(s => Object.assign({}, s, roiModel(P, s.resp)));
-
-      const aBe   = useCountUp(r.be);
-      const aNet  = useCountUp(r.net);
-      const aCust = useCountUp(r.customers);
-      const aRoi  = useCountUp(r.roi);
 
       function generatePDF() {
         const now = new Date();
@@ -635,7 +535,6 @@
         const fmt = (n) => new Intl.NumberFormat('sv-SE').format(Math.round(n)).replace(/[   ]/g,' ');
         const f1  = (n) => (n < 100 ? n.toFixed(1).replace('.', ',') : fmt(n));
         const f2  = (n) => new Intl.NumberFormat('sv-SE',{maximumFractionDigits:2}).format(n);
-
         const logo = '<div style="font-family:Newsreader,Georgia,serif;font-weight:400;font-size:26px;color:#1A1916;line-height:1">Informa<span style="color:#E85B7D">.</span></div>';
 
         const css = `
@@ -644,111 +543,65 @@
           html, body { font-family: 'Inter', system-ui, sans-serif; color: #1A1916; background: #F1ECE3;
             -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .doc-hdr { display:flex; justify-content:space-between; align-items:flex-start;
-            padding-bottom:14px; border-bottom:1px solid rgba(26,25,22,0.18); margin-bottom:26px; }
+            padding-bottom:14px; border-bottom:1px solid rgba(26,25,22,0.18); margin-bottom:28px; }
           .doc-hdr-r { text-align:right; font-size:11px; color:#5C5852; line-height:1.6; }
-          .eyeb { font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8A8579;
-            font-weight:500; margin-bottom:8px; }
-          h1 { font-family:'Newsreader',Georgia,serif; font-weight:300; font-size:36px;
-            line-height:1.1; letter-spacing:-0.01em; margin-bottom:10px; }
-          .lede { font-size:11.5px; color:#5C5852; line-height:1.6; max-width:80%; margin-bottom:22px; }
-          .hero { background:#1E1B19; color:#F1ECE3; padding:22px 26px; margin-bottom:22px;
-            display:grid; grid-template-columns:1fr 1.25fr; gap:24px; align-items:end; }
+          .eyeb { font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8A8579; font-weight:500; margin-bottom:8px; }
+          h1 { font-family:'Newsreader',Georgia,serif; font-weight:300; font-size:38px; line-height:1.1; letter-spacing:-0.01em; margin-bottom:10px; }
+          .lede { font-size:12px; color:#5C5852; line-height:1.6; max-width:80%; margin-bottom:26px; }
+          .hero { background:#1E1B19; color:#F1ECE3; padding:26px 28px; margin-bottom:26px;
+            display:grid; grid-template-columns:1fr 1.3fr; gap:26px; align-items:end; }
           .hero .eyeb { color:rgba(241,236,227,0.62); }
-          .hero .big { font-family:'Newsreader',Georgia,serif; font-weight:300; font-size:52px;
-            line-height:1; letter-spacing:-0.02em; }
-          .hero .unit { font-family:'Newsreader',Georgia,serif; font-style:italic; font-weight:300;
-            font-size:16px; color:rgba(241,236,227,0.76); margin-top:6px; }
-          .hero .note { font-size:11px; color:rgba(241,236,227,0.84); line-height:1.6; }
+          .hero .big { font-family:'Newsreader',Georgia,serif; font-weight:300; font-size:60px; line-height:1; letter-spacing:-0.02em; }
+          .hero .unit { font-family:'Newsreader',Georgia,serif; font-style:italic; font-weight:300; font-size:17px; color:rgba(241,236,227,0.76); margin-top:6px; }
+          .hero .note { font-size:12px; color:rgba(241,236,227,0.86); line-height:1.6; }
           .hero .note b { color:#FA7896; font-weight:500; }
-          .funnel { width:100%; border-collapse:collapse; margin-bottom:20px; }
-          .funnel td { padding:7px 8px; border-bottom:1px solid rgba(26,25,22,0.08); font-size:11px; color:#5C5852; }
-          .funnel td.v { text-align:right; font-family:'Newsreader',Georgia,serif; font-size:14px; color:#1A1916; white-space:nowrap; }
-          .funnel td.how { color:#8A8579; font-size:9.5px; }
-          .funnel tr.sum td { border-top:1px solid rgba(26,25,22,0.18); color:#1A1916; font-weight:600; }
-          .quad { display:grid; grid-template-columns:repeat(4,1fr); margin-bottom:20px;
-            border-top:1px solid rgba(26,25,22,0.18); border-bottom:1px solid rgba(26,25,22,0.18); }
-          .qcell { padding:12px 12px; border-right:1px solid rgba(26,25,22,0.08); }
-          .qcell:last-child { border-right:none; }
-          .qnum { font-family:'Newsreader',Georgia,serif; font-size:19px; line-height:1.1; }
-          .qlab { font-size:8px; letter-spacing:0.08em; text-transform:uppercase; color:#8A8579; font-weight:600; margin-top:5px; }
-          table.sc { width:100%; border-collapse:collapse; margin-bottom:20px; }
-          .sc th { font-size:8px; letter-spacing:0.1em; text-transform:uppercase; color:#8A8579; font-weight:600;
-            text-align:right; padding:6px 8px; border-bottom:1px solid rgba(26,25,22,0.18); }
-          .sc th:first-child, .sc td:first-child { text-align:left; }
-          .sc td { font-family:'Newsreader',Georgia,serif; font-size:13.5px; text-align:right; padding:7px 8px;
-            border-bottom:1px solid rgba(26,25,22,0.08); }
-          .sc td:first-child { font-family:'Inter',sans-serif; font-size:10.5px; color:#5C5852; }
-          .sc tr.mid td { font-weight:600; } .sc tr.mid td:first-child { color:#1A1916; }
+          table { width:100%; border-collapse:collapse; margin-bottom:24px; }
+          td, th { padding:8px 8px; border-bottom:1px solid rgba(26,25,22,0.08); }
+          .calc td { font-size:11.5px; color:#5C5852; }
+          .calc td.how { font-size:10px; color:#8A8579; }
+          .calc td.v { text-align:right; font-family:'Newsreader',Georgia,serif; font-size:15px; color:#1A1916; white-space:nowrap; }
+          .calc tr.sum td { border-top:1px solid rgba(26,25,22,0.18); color:#1A1916; font-weight:600; }
+          .out th { font-size:8.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8A8579; font-weight:600;
+            text-align:right; border-bottom:1px solid rgba(26,25,22,0.18); }
+          .out th:first-child, .out td:first-child { text-align:left; }
+          .out td { font-family:'Newsreader',Georgia,serif; font-size:15px; text-align:right; }
+          .out td:first-child { font-family:'Inter',sans-serif; font-size:11px; color:#5C5852; }
+          .out tr.first td { font-weight:600; } .out tr.first td:first-child { color:#1A1916; }
+          .neg { color:#E85B7D; }
           .about { border-top:1px solid rgba(26,25,22,0.18); padding-top:14px; }
-          .about p { font-size:10px; color:#5C5852; line-height:1.65; max-width:88%; }
-          .foot { position:absolute; bottom:48px; left:76px; right:76px; display:flex;
-            justify-content:space-between; font-size:9px; color:#8A8579;
-            border-top:1px solid rgba(26,25,22,0.08); padding-top:10px; }
+          .about p { font-size:10.5px; color:#5C5852; line-height:1.65; max-width:86%; }
+          .foot { position:absolute; bottom:48px; left:76px; right:76px; display:flex; justify-content:space-between;
+            font-size:9px; color:#8A8579; border-top:1px solid rgba(26,25,22,0.08); padding-top:10px; }
         `;
-
-        const row = (label, how, value, sum) =>
-          '<tr' + (sum ? ' class="sum"' : '') + '><td>' + label + '</td><td class="how">' + how + '</td><td class="v">' + value + '</td></tr>';
-
-        const funnel =
-          '<table class="funnel"><tbody>' +
-          row('Läsare i er målgrupp', fmt(reach) + ' läsare × ' + target + ' %', fmt(r.audience)) +
-          row('Ser annonsen minst en gång', 'Observationsvärde ' + obs + ' % per nummer, ' + runs + ' införanden', fmt(r.seen) + ' (' + Math.round(r.seenShare * 100) + ' %)') +
-          row('Hör av sig', f2(resp) + ' % av dem som ser annonsen', f1(r.leads)) +
-          row('Blir kund', conv + ' % av förfrågningarna', f1(r.customers)) +
-          row('Bruttovinst per kund', fmt(order) + ' kr/år × ' + f2(years) + ' år × ' + margin + ' %', fmt(r.perCust) + ' kr') +
-          row('Bruttovinst totalt', '', fmt(r.profit) + ' kr') +
-          row('Kampanjkostnad', fmt(price) + ' kr × ' + runs + ' införanden', '−' + fmt(r.cost) + ' kr') +
-          row('Netto', '', fmt(r.net) + ' kr', true) +
+        const row = (l, how, v, sum) => '<tr' + (sum ? ' class="sum"' : '') + '><td>' + l + '</td><td class="how">' + how + '</td><td class="v">' + v + '</td></tr>';
+        const calc = '<table class="calc"><tbody>' +
+          row('Läsare i er målgrupp', fmt(reach) + ' per nummer × ' + target + ' %', fmt(audience)) +
+          row('Kampanjkostnad', fmt(price) + ' kr × ' + runs + ' införanden', fmt(cost) + ' kr') +
+          row('Bruttovinst per ny kund', fmt(order) + ' kr/år × ' + f2(years) + ' år × ' + margin + ' %', fmt(perCust) + ' kr') +
+          row('Nya kunder som krävs', fmt(cost) + ' kr ÷ ' + fmt(perCust) + ' kr', f1(be), true) +
           '</tbody></table>';
-
-        const rows = scenarios.map(function(s) {
-          return '<tr' + (s.mid ? ' class="mid"' : '') + '>' +
-            '<td>' + s.label + ' (' + f2(s.resp) + ' %)</td>' +
-            '<td>' + f1(s.leads) + '</td>' +
-            '<td>' + f1(s.customers) + '</td>' +
-            '<td>' + fmt(s.net) + ' kr</td>' +
-            '<td>' + fmt(s.roi) + ' %</td>' +
-          '</tr>';
-        }).join('');
+        const out = '<table class="out"><thead><tr><th>Om kampanjen ger</th><th>Bruttovinst</th><th>Netto</th><th>Avkastning</th></tr></thead><tbody>' +
+          outcomes.map(o => '<tr' + (o.n === firstPlus ? ' class="first"' : '') + '><td>' + o.n + (o.n === 1 ? ' ny kund' : ' nya kunder') + '</td>' +
+            '<td>' + fmt(o.n * perCust) + ' kr</td><td' + (o.net < 0 ? ' class="neg"' : '') + '>' + fmt(o.net) + ' kr</td>' +
+            '<td' + (o.roi < 0 ? ' class="neg"' : '') + '>' + fmt(o.roi) + ' %</td></tr>').join('') +
+          '</tbody></table>';
 
         const page1 =
           '<div class="page" style="position:relative;">' +
-            '<div class="doc-hdr">' + logo +
-              '<div class="doc-hdr-r">' + (company ? (company + '<br>') : '') + title + '<br>' + dateStr + '</div>' +
-            '</div>' +
+            '<div class="doc-hdr">' + logo + '<div class="doc-hdr-r">' + (company ? company + '<br>' : '') + title + '<br>' + dateStr + '</div></div>' +
             '<div class="eyeb">Annonskalkyl</div>' +
             '<h1>Vad annonsen behöver ge tillbaka<span style="color:#E85B7D">.</span></h1>' +
-            '<div class="lede">Underlaget bygger på era egna antaganden. Poängen är inte att lova ett utfall, ' +
-              'utan att visa vad som krävs för att annonsen ska gå ihop och vad den ger om antagandena håller.</div>' +
-
-            '<div class="hero">' +
-              '<div><div class="eyeb">Annonsen går jämnt ut vid</div>' +
-                '<div class="big">' + f1(r.be) + '</div><div class="unit">nya kunder</div></div>' +
-              '<div class="note">' + (!isFinite(r.beResp) || r.beResp > 100 ? 'Nollpunkten går inte att nå med den här målgruppen. ' : 'Det kräver att <b>' + f2(r.beResp) + ' %</b> av dem som ser annonsen hör av sig. ') +
-                'Ni räknar med ' + f2(resp) + ' %, vilket ger ' + f1(r.customers) + ' nya kunder och ' +
-                (r.net >= 0 ? 'ett netto på ' + fmt(r.net) + ' kr.' : 'ett underskott på ' + fmt(-r.net) + ' kr.') + '</div>' +
-            '</div>' +
-
-            '<div class="eyeb">Så räknar vi</div>' + funnel +
-
-            '<div class="quad">' +
-              '<div class="qcell"><div class="qnum">' + fmt(r.cpm) + ' kr</div><div class="qlab">Per tusen i målgruppen, per införande</div></div>' +
-              '<div class="qcell"><div class="qnum">' + (r.leads > 0 ? fmt(r.cpl) + ' kr' : 'n/a') + '</div><div class="qlab">Per förfrågan</div></div>' +
-              '<div class="qcell"><div class="qnum">' + (r.customers > 0 ? fmt(r.cac) + ' kr' : 'n/a') + '</div><div class="qlab">Per ny kund</div></div>' +
-              '<div class="qcell"><div class="qnum">' + fmt(r.roi) + ' %</div><div class="qlab">Avkastning på bruttovinst</div></div>' +
-            '</div>' +
-
-            '<div class="eyeb">Om responsen blir en annan</div>' +
-            '<table class="sc"><thead><tr><th>Respons</th><th>Förfrågningar</th><th>Kunder</th><th>Netto</th><th>Avkastning</th></tr></thead>' +
-            '<tbody>' + rows + '</tbody></table>' +
-
-            '<div class="about">' +
-              '<div class="eyeb">Om Informa</div>' +
+            '<div class="lede">Kalkylen bygger bara på två saker ni vet: vad kampanjen kostar och vad en ny kund är värd för er. ' +
+              'Den lovar inget utfall. Den visar hur många nya kunder som krävs för att annonsen ska gå ihop.</div>' +
+            '<div class="hero"><div><div class="eyeb">Annonsen går jämnt ut vid</div><div class="big">' + f1(be) + '</div><div class="unit">nya kunder</div></div>' +
+              '<div class="note">Det motsvarar <b>1 av ' + fmt(oneIn) + '</b> läsare i er målgrupp. ' +
+              'Med ' + firstPlus + (firstPlus === 1 ? ' ny kund' : ' nya kunder') + ' är ni ' + fmt(firstPlus * perCust - cost) + ' kr plus.</div></div>' +
+            '<div class="eyeb">Så räknar vi</div>' + calc +
+            '<div class="eyeb">Vad kampanjen ger</div>' + out +
+            '<div class="about"><div class="eyeb">Om Informa</div>' +
               '<p>Informa driver medieförsäljningen åt några av Sveriges starkaste medievarumärken. ' +
               'Vi har gjort det sedan 1977 och kan läsarna, annonsörerna och marknaden. ' +
-              'Vi säger som det är, även när svaret är att annonsen inte är rätt för er just nu.</p>' +
-            '</div>' +
-
+              'Vi säger som det är, även när svaret är att annonsen inte är rätt för er just nu.</p></div>' +
             '<div class="foot"><span>Informa. Sveriges mest erfarna säljpartner</span><span>media@informa.se</span></div>' +
           '</div>';
 
@@ -757,7 +610,6 @@
         container.innerHTML = '<style>.page{width:794px!important;min-height:1123px;height:1123px!important;padding:56px 76px;overflow:hidden;box-sizing:border-box;background:#F1ECE3}</style><style>' + css + '</style>' + page1;
         document.body.appendChild(container);
         setToast('Genererar PDF…');
-
         const loadLib = (src) => new Promise((res, rej) => {
           if (document.querySelector('script[src="' + src + '"]')) { res(); return; }
           const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej;
@@ -770,8 +622,7 @@
         ]).then(function() {
           const { jsPDF } = window.jspdf;
           const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-          const pg = container.querySelector('.page');
-          return window.html2canvas(pg, { scale:2, useCORS:true, allowTaint:true,
+          return window.html2canvas(container.querySelector('.page'), { scale:2, useCORS:true, allowTaint:true,
             backgroundColor:'#F1ECE3', width:794, height:1123 }).then(function(c1) {
             pdf.addImage(c1.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, 210, 297);
             document.body.removeChild(container);
@@ -785,27 +636,27 @@
         });
       }
 
-      const FRow = ({ k, how, v, neg, strong }) => (
-        <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:"0.15rem 1rem",
-          padding:"0.7rem 0", borderBottom:`1px solid ${HAIR2}` }}>
-          <span style={{ fontSize:"0.86rem", color: strong ? INK : INK2, fontWeight: strong ? 600 : 400 }}>{k}</span>
-          <span style={{ fontFamily:SERIF, fontSize: strong ? "1.4rem" : "1.2rem", color: neg ? PINK : INK,
-            whiteSpace:"nowrap", textAlign:"right" }}>{v}</span>
-          {how && <span style={{ gridColumn:"1 / -1", fontSize:"0.72rem", color:INK3 }}>{how}</span>}
-        </div>
-      );
+      const th = { fontSize:"0.65rem", letterSpacing:"0.1em", textTransform:"uppercase", color:INK3,
+        fontWeight:600, padding:"0.5rem 0.4rem", borderBottom:`1px solid ${HAIR}`, textAlign:"right" };
+      const tdc = { padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`, textAlign:"right",
+        fontFamily:SERIF, fontSize:"1.05rem" };
 
       return (
         <div style={{ maxWidth:1000, margin:"0 auto" }}>
           {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+          <div className="print-header">
+            <Wordmark size="2rem" />
+            <div style={{ fontSize:"1rem", color:INK2 }}>Annonskalkyl · {title} · {new Date().toLocaleDateString("sv-SE")}</div>
+          </div>
 
-          <div style={{ textAlign:"center", marginBottom:"2.5rem" }}>
-            <h1 style={{ fontFamily:SERIF, fontSize:"clamp(1.6rem,3.5vw,2.4rem)", fontWeight:300,
-              color:INK, letterSpacing:"-0.01em", marginBottom:"0.5rem" }}>
-              Från läsare till <em style={{ color:PINK, fontWeight:300 }}>affär</em>
+          <div style={{ textAlign:"center", marginBottom:"2.75rem" }}>
+            <h1 style={{ fontFamily:SERIF, fontSize:"clamp(1.85rem,5vw,3.1rem)", fontWeight:300,
+              color:INK, margin:"0 0 1rem", lineHeight:1.12, letterSpacing:"-0.01em" }}>
+              Vad annonsen behöver ge tillbaka<span style={{ color:PINK }}>.</span>
             </h1>
-            <p style={{ color:INK2, fontSize:"0.95rem", maxWidth:"52ch", margin:"0 auto" }}>
-              Hela kedjan steg för steg, med era egna antaganden. Exporteras som PDF.
+            <p style={{ color:INK2, fontSize:"1rem", maxWidth:"54ch", margin:"0 auto" }}>
+              Två saker räcker: vad kampanjen kostar och vad en ny kund är värd för er.
+              Kalkylen visar hur många nya kunder som krävs, utan att gissa på respons.
             </p>
           </div>
 
@@ -814,100 +665,63 @@
               <div style={eyebrow}>Kampanjen</div>
               <TextInput label="Annonsör" value={company} onChange={setCompany} placeholder="Företagsnamn" />
               <SelectInput label="Titel" value={title} onChange={setTitle} options={TITLES} />
-              <NumberInput label="Pris per införande" value={price} onChange={setPrice} suffix="kr" min={0} step={1000} />
+              <SliderInput label="Pris per införande" value={price} min={0} max={300000} step={1000} onChange={setPrice} suffix="kr" />
               <SliderInput label="Antal införanden" value={runs} min={1} max={24} step={1} onChange={setRuns} suffix="st" />
 
               <div style={sectionHead}>Läsarna</div>
-              <NumberInput label="Läsare per nummer" value={reach} onChange={setReach} suffix="st" min={0} step={1000}
-                hint="Från mediakit" />
-              <SliderInput label="Andel av läsarna som är er målgrupp" value={target} min={0} max={100} step={1}
-                onChange={setTarget} suffix="%" />
-              <SliderInput label="Observationsvärde per nummer" value={obs} min={0} max={100} step={1}
-                onChange={setObs} suffix="%" hint="Andel som lägger märke till annonsen i ett nummer" />
+              <NumberInput label="Läsare per nummer" value={reach} onChange={setReach} suffix="st" min={0} step={1000} hint={td.source} />
+              <SliderInput label="Andel av läsarna som är er målgrupp" value={target} min={0} max={100} step={1} onChange={setTarget} suffix="%" />
 
-              <div style={sectionHead}>Responsen</div>
-              <SliderInput label="Andel av dem som ser annonsen som hör av sig" value={resp} min={0} max={5} step={0.05}
-                onChange={setResp} suffix="%" hint="Mejlar, ringer, besöker er sajt eller bokar möte" />
-              <SliderInput label="Andel av förfrågningarna som blir kund" value={conv} min={0} max={100} step={1}
-                onChange={setConv} suffix="%" />
-
-              <div style={sectionHead}>Affären</div>
+              <div style={sectionHead}>Er affär</div>
               <NumberInput label="Snittaffär per kund och år" value={order} onChange={setOrder} suffix="kr" min={0} step={5000} />
-              <NumberInput label="Antal år kunden stannar" value={years} onChange={setYears} suffix="år" min={0.5} step={0.5} />
+              <NumberInput label="Antal år en kund stannar" value={years} onChange={setYears} suffix="år" min={0.5} step={0.5} />
               <SliderInput label="Bruttomarginal" value={margin} min={0} max={100} step={1} onChange={setMargin} suffix="%" />
             </div>
 
             <div>
               <div style={heroCard}>
                 <div style={{ ...eyebrow, color:"rgba(241,236,227,0.62)" }}>Annonsen går jämnt ut vid</div>
-                <span style={bigNum}>{r.perCust > 0 ? num1(aBe) : "n/a"}</span>
+                <span style={bigNum}>{perCust > 0 ? num1(aBe) : "n/a"}</span>
                 <div style={{ fontFamily:SERIF, fontStyle:"italic", fontWeight:300,
                   fontSize:"1.35rem", color:"rgba(241,236,227,0.76)", marginTop:"0.6rem" }}>
                   nya kunder
                 </div>
-                <BreakEven actual={r.customers} breakeven={r.be} label="Väntat utfall" />
                 <HeroNote>
-                  {!isFinite(r.beResp) || r.beResp > 100
-                    ? <React.Fragment>Nollpunkten går inte att nå med den här målgruppen, även om alla som ser annonsen hör av sig. Kontrollera konvertering, affärsvärde och räckvidd.</React.Fragment>
-                    : <React.Fragment>Det kräver att <Em>{dec2(r.beResp)} %</Em> av dem som ser annonsen hör av sig.
-                        Ni räknar med {dec2(resp)} %, vilket ger {dec1(aCust)} nya kunder.</React.Fragment>}
+                  {!ready
+                    ? <React.Fragment>Fyll i läsare, målgrupp och vad en kund är värd så räknar vi ut nollpunkten.</React.Fragment>
+                    : impossible
+                    ? <React.Fragment>Det är fler kunder än det finns läsare i målgruppen. Kampanjen kostar för mycket i förhållande till vad en kund är värd.</React.Fragment>
+                    : <React.Fragment>Det motsvarar <Em>1 av {sek(aOne)}</Em> läsare i er målgrupp. Med {firstPlus} {firstPlus === 1 ? "ny kund" : "nya kunder"} är ni {sek(firstPlus * perCust - cost)} kr plus.</React.Fragment>}
                 </HeroNote>
               </div>
 
               <div style={{ ...card, marginTop:"1.25rem" }}>
                 <div style={eyebrow}>Så räknar vi</div>
-                <FRow k="Läsare i er målgrupp" how={sek(reach) + " läsare × " + target + " %"} v={sek(r.audience)} />
-                <FRow k="Ser annonsen minst en gång"
-                  how={"Observationsvärde " + obs + " % per nummer, " + runs + " införanden"}
-                  v={sek(r.seen) + " (" + Math.round(r.seenShare * 100) + " %)"} />
-                <FRow k="Hör av sig" how={dec2(resp) + " % av dem som ser annonsen"} v={dec1(r.leads)} />
-                <FRow k="Blir kund" how={conv + " % av förfrågningarna"} v={dec1(aCust)} />
-                <FRow k="Bruttovinst per kund"
-                  how={sek(order) + " kr/år × " + dec2(years) + " år × " + margin + " %"} v={sek(r.perCust) + " kr"} />
-                <FRow k="Bruttovinst totalt" v={sek(r.profit) + " kr"} />
-                <FRow k="Kampanjkostnad" how={sek(price) + " kr × " + runs + " införanden"} v={"−" + sek(r.cost) + " kr"} />
-                <FRow k="Netto" v={sek(aNet) + " kr"} neg={r.net < 0} strong />
+                <KeyRow k="Läsare i er målgrupp" v={sek(audience)} />
+                <KeyRow k="Kampanjkostnad" v={sek(cost) + " kr"} />
+                <KeyRow k="Bruttovinst per ny kund" v={sek(perCust) + " kr"} />
+                <KeyRow k="Kostnad per tusen i målgruppen, per införande" v={sek(cpm) + " kr"} />
+                <KeyRow k="Kostnad per läsare i målgruppen, hela kampanjen" v={dec1(perReader) + " kr"} />
               </div>
 
               <div style={{ ...card, marginTop:"1.25rem" }}>
-                <div style={eyebrow}>Nyckeltal</div>
-                <KeyRow k="Kostnad per tusen i målgruppen, per införande" v={sek(r.cpm) + " kr"} />
-                <KeyRow k="Kostnad per förfrågan" v={r.leads > 0 ? sek(r.cpl) + " kr" : "n/a"} />
-                <KeyRow k="Kostnad per ny kund" v={r.customers > 0 ? sek(r.cac) + " kr" : "n/a"} />
-                <KeyRow k="Förfrågningar som krävs för nollpunkt" v={isFinite(r.beLeads) ? dec1(r.beLeads) : "n/a"} />
-                <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between",
-                  gap:"1rem", paddingTop:"0.8rem" }}>
-                  <span style={{ fontSize:"0.86rem", color:INK2 }}>Avkastning på bruttovinst</span>
-                  <span style={{ fontFamily:SERIF, fontSize:"1.6rem", color: r.roi < 0 ? PINK : INK }}>{sek(aRoi)} %</span>
-                </div>
-              </div>
-
-              <div style={{ ...card, marginTop:"1.25rem" }}>
-                <div style={eyebrow}>Om responsen blir en annan</div>
+                <div style={eyebrow}>Vad kampanjen ger</div>
                 <div style={{ overflowX:"auto" }}>
-                  <table style={{ width:"100%", borderCollapse:"collapse", minWidth:360 }}>
-                    <thead>
-                      <tr>
-                        {["Respons","Förfr.","Kunder","Netto"].map((h, i) => (
-                          <th key={h} style={{ textAlign: i === 0 ? "left" : "right", fontSize:"0.65rem",
-                            letterSpacing:"0.1em", textTransform:"uppercase", color:INK3, fontWeight:600,
-                            padding:"0.5rem 0.4rem", borderBottom:`1px solid ${HAIR}` }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
+                  <table style={{ width:"100%", borderCollapse:"collapse", minWidth:320 }}>
+                    <thead><tr>
+                      <th style={{ ...th, textAlign:"left" }}>Om kampanjen ger</th>
+                      <th style={th}>Netto</th>
+                      <th style={th}>Avkastning</th>
+                    </tr></thead>
                     <tbody>
-                      {scenarios.map(s => (
-                        <tr key={s.label}>
-                          <td style={{ padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`, fontSize:"0.85rem",
-                            color: s.mid ? INK : INK2, fontWeight: s.mid ? 600 : 400 }}>
-                            {s.mid && <span style={{ color:PINK }}>→ </span>}{s.label} ({dec2(s.resp)} %)
+                      {outcomes.map(o => (
+                        <tr key={o.n}>
+                          <td style={{ ...tdc, textAlign:"left", fontFamily:"inherit", fontSize:"0.85rem",
+                            color: o.n === firstPlus ? INK : INK2, fontWeight: o.n === firstPlus ? 600 : 400 }}>
+                            {o.n === firstPlus && <span style={{ color:PINK }}>→ </span>}{o.n} {o.n === 1 ? "ny kund" : "nya kunder"}
                           </td>
-                          <td style={{ padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`, textAlign:"right",
-                            fontFamily:SERIF, fontSize:"1.05rem" }}>{dec1(s.leads)}</td>
-                          <td style={{ padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`, textAlign:"right",
-                            fontFamily:SERIF, fontSize:"1.05rem" }}>{dec1(s.customers)}</td>
-                          <td style={{ padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`, textAlign:"right",
-                            fontFamily:SERIF, fontSize:"1.05rem", color: s.net < 0 ? PINK : INK }}>{sek(s.net)} kr</td>
+                          <td style={{ ...tdc, color: o.net < 0 ? PINK : INK }}>{sek(o.net)} kr</td>
+                          <td style={{ ...tdc, color: o.roi < 0 ? PINK : INK }}>{sek(o.roi)} %</td>
                         </tr>
                       ))}
                     </tbody>
@@ -929,8 +743,8 @@
               </div>
 
               <Note>
-                Observationsvärdet gäller per nummer. Andelen som ser annonsen minst en gång växer med antalet
-                införanden men planar ut, eftersom samma läsare får flera nummer. Varje nummer räknas som en egen chans.
+                Vi räknar på bruttovinst, inte omsättning, eftersom det är vinsten som ska betala annonsen.
+                Pilen visar första antalet kunder där kampanjen går plus.
               </Note>
             </div>
           </div>
@@ -939,7 +753,7 @@
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // 3. Rekrytering: två vägar till samma tillsättning
+    // 2. Rekrytering: två vägar till samma tillsättning
     //
     //   Väg A, annons först:  annonspris + om den inte räcker, byrå efteråt
     //   Väg B, byrå direkt:   byråarvode
@@ -1124,7 +938,7 @@
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // 4. Säljstöd internt: vad affären ger Informa per nedlagd timme
+    // 3. Säljstöd internt: vad affären ger Informa per nedlagd timme
     //
     //   intäkt     = provision × annonsvärde, eller fast arvode per införande
     //   timmar     = säljtid för affären + hantering per införande × antal
@@ -1318,14 +1132,13 @@
     function App() {
       const [tab, setTab] = useState(() => {
         const t = new URLSearchParams(window.location.search).get("tab");
-        return ["annons","roi","rekrytering","internal"].includes(t) ? t : "annons";
+        return ["annons","rekrytering","internal"].includes(t) ? t : "annons";
       });
       const [unlocked, setUnlocked] = useState(false);
       if (!unlocked) return <PinScreen onUnlock={() => setUnlocked(true)} />;
 
       const TABS = [
         { id:"annons",      label:"För annonsörer" },
-        { id:"roi",         label:"ROI-kalkyl" },
         { id:"rekrytering", label:"Rekrytering" },
         { id:"internal",    label:"Säljstöd" },
       ];
@@ -1360,7 +1173,6 @@
 
           <main style={{ maxWidth:1140, margin:"0 auto", padding:"2.75rem 1.5rem 5rem" }}>
             {tab === "annons"      && <div className="tab-in" key="a"><AdvertiserCalc /></div>}
-            {tab === "roi"         && <div className="tab-in" key="b"><OfferCalc /></div>}
             {tab === "rekrytering" && <div className="tab-in" key="c"><RecruitCalc /></div>}
             {tab === "internal"    && <div className="tab-in" key="d"><InternalCalc /></div>}
 
