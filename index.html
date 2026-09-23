@@ -470,64 +470,112 @@
     const Em = ({ children }) => <strong style={{ color:ROSA, fontWeight:500 }}>{children}</strong>;
     const sectionHead = { ...eyebrow, marginTop:"1.75rem", paddingTop:"1.5rem", borderTop:`1px solid ${HAIR2}` };
 
-    // Publika räckviddssiffror per titel. Saknas siffra fyller annonsören i från mediakit.
+    // Kanaler och hur de köps. Webb och nyhetsbrev säljs per vecka på titlarna.
+    const CHANNELS = [
+      { id:"print", name:"Print",      priceLabel:"Pris per införande", unitLabel:"Antal införanden", unitSuffix:"st",
+        reachLabel:"Läsare per nummer",        who:"läsare",    defPrice:38000, defUnits:6, defTarget:30, maxUnits:24 },
+      { id:"web",   name:"Webb",       priceLabel:"Pris per vecka",     unitLabel:"Antal veckor",     unitSuffix:"veckor",
+        reachLabel:"Unika besökare per vecka", who:"besökare",  defPrice:25000, defUnits:4, defTarget:20, maxUnits:52 },
+      { id:"nl",    name:"Nyhetsbrev", priceLabel:"Pris per vecka",     unitLabel:"Antal veckor",     unitSuffix:"veckor",
+        reachLabel:"Mottagare",                who:"mottagare", defPrice:20000, defUnits:4, defTarget:30, maxUnits:52 },
+    ];
+
+    // Publika siffror per titel och kanal. reach 0 = ingen publik siffra, fylls i från mediakit.
+    const NONE = { reach:0, source:"Ingen publik siffra, fyll i från mediakit" };
     const TITLE_DATA = {
-      "Läkartidningen":     { reach: 48900,  source: "TS-upplaga 48 900 ex, 21 nr/år (Läkartidningen)" },
-      "Dagens Samhälle":    { reach: 41000,  source: "41 000 läsare per vecka i print (Orvesto 2024)" },
-      "Ny Teknik":          { reach: 162000, source: "162 000 läsare per utgåva (Orvesto 2025)" },
-      "Energi & Miljö":     { reach: 0, source: "Ingen publik siffra, fyll i från mediakit" },
-      "Aktuell Hållbarhet": { reach: 0, source: "Ingen publik siffra, fyll i från mediakit" },
-      "Besöksliv":          { reach: 0, source: "Ingen publik siffra, fyll i från mediakit" },
-      "Annan titel":        { reach: 0, source: "Fyll i från mediakit" },
+      "Läkartidningen": {
+        print: { reach:48900,  source:"TS-upplaga 48 900 ex, 21 nr/år" },
+        web:   { reach:200000, imps:410000, source:"200 000 unika besökare och 410 000 visningar per vecka (2025)" },
+        nl:    { reach:47800,  open:46, source:"47 800 mottagare, 46 % öppningsgrad, 5 utskick per vecka (2025)" },
+      },
+      "Dagens Samhälle": {
+        print: { reach:41000,  source:"41 000 läsare per vecka i print (Orvesto 2024)" },
+        web:   { reach:41000,  source:"41 000 unika webbläsare per vecka (Orvesto)" },
+        nl:    { reach:30000,  source:"Cirka 30 000 prenumeranter" },
+      },
+      "Ny Teknik": {
+        print: { reach:162000, source:"162 000 läsare per utgåva (Orvesto 2025)" },
+        web:   { reach:304808, source:"304 808 aktiva användare per vecka (Google Analytics)" },
+        nl:    NONE,
+      },
+    };
+    const titleData = (t, ch) => ((TITLE_DATA[t] || {})[ch]) || NONE;
+
+    const channelDefaults = (t) => {
+      const o = {};
+      CHANNELS.forEach(c => {
+        const d = titleData(t, c.id);
+        o[c.id] = { on: c.id === "print", price: c.defPrice, units: c.defUnits, target: c.defTarget,
+          reach: d.reach || 0, imps: d.imps || 0, open: d.open || 0 };
+      });
+      return o;
     };
 
     // ══════════════════════════════════════════════════════════════════════════
-    // 1. För annonsörer: vad krävs för att annonsen ska gå ihop?
+    // 1. För annonsörer: vad krävs för att kampanjen ska gå ihop?
     //
-    //   Kalkylen gissar inte på observationsvärde, respons eller konvertering.
-    //   Den bygger bara på det annonsören vet: vad kampanjen kostar och vad en
-    //   ny kund är värd. Svaret är hur många nya kunder som krävs.
+    //   Kalkylen gissar inte på respons eller konvertering. Den bygger bara på
+    //   det annonsören vet: vad kampanjen kostar per kanal och vad en ny kund
+    //   är värd. Svaret är hur många nya kunder som krävs.
     //
-    //   målgrupp          = läsare per nummer × andel i målgruppen
-    //   bruttovinst/kund  = snittaffär per år × antal år × bruttomarginal
-    //   nollpunkt         = kampanjkostnad / bruttovinst per kund
+    //   kostnad per kanal = pris × antal (införanden eller veckor)
+    //   målgrupp per kanal = räckvidd × andel i målgruppen
+    //   bruttovinst/kund   = snittaffär per år × antal år × bruttomarginal
+    //   nollpunkt          = total kostnad / bruttovinst per kund
     // ══════════════════════════════════════════════════════════════════════════
     function AdvertiserCalc() {
-      const [company, setCompany] = useLS("med3_company", "");
-      const [title,   setTitleRaw] = useLS("med3_title",  "Läkartidningen");
-      const [price,   setPrice]   = useLS("med3_price",    38000);
-      const [runs,    setRuns]    = useLS("med3_runs",         6);
-      const [reach,   setReach]   = useLS("med3_reach",    48900);
-      const [target,  setTarget]  = useLS("med3_target",      30);
-      const [order,   setOrder]   = useLS("med3_order",   120000);
-      const [years,   setYears]   = useLS("med3_years",        3);
-      const [margin,  setMargin]  = useLS("med3_margin",      45);
-      const [toast,   setToast]   = useState(null);
+      const [company, setCompany]  = useLS("med4_company", "");
+      const [title,   setTitleRaw] = useLS("med4_title",   "Läkartidningen");
+      const [ch,      setCh]       = useLS("med4_channels", channelDefaults("Läkartidningen"));
+      const [order,   setOrder]    = useLS("med4_order",   120000);
+      const [years,   setYears]    = useLS("med4_years",        3);
+      const [margin,  setMargin]   = useLS("med4_margin",      45);
+      const [toast,   setToast]    = useState(null);
 
-      const td = TITLE_DATA[title] || TITLE_DATA["Annan titel"];
+      const upd = (id, patch) => setCh(Object.assign({}, ch, { [id]: Object.assign({}, ch[id], patch) }));
       const setTitle = (t) => {
         setTitleRaw(t);
-        const d = TITLE_DATA[t];
-        setReach(d && d.reach > 0 ? d.reach : 0);   // ingen siffra: töm så att fel titels räckvidd inte ligger kvar
+        const next = {};
+        CHANNELS.forEach(c => {
+          const d = titleData(t, c.id);
+          next[c.id] = Object.assign({}, ch[c.id], { reach: d.reach || 0, imps: d.imps || 0, open: d.open || 0 });
+        });
+        setCh(next);   // titel utan siffra tömmer fälten, så att fel titels räckvidd aldrig ligger kvar
       };
 
-      const cost      = price * runs;
-      const audience  = reach * (target / 100);
-      const perCust   = order * years * (margin / 100);
+      const perCust = order * years * (margin / 100);
+      const rows = CHANNELS.filter(c => ch[c.id] && ch[c.id].on).map(c => {
+        const s = ch[c.id];
+        const cost = s.price * s.units;
+        const audience = s.reach * (s.target / 100);
+        return {
+          c, s, cost, audience,
+          cpm: audience > 0 ? s.price / (audience / 1000) : 0,           // per införande eller vecka
+          effCpm: c.id === "web" && s.imps > 0 ? s.price / (s.imps / 1000) : 0,
+          opens: c.id === "nl" && s.open > 0 ? s.reach * (s.open / 100) : 0,
+        };
+      });
+      const cost      = rows.reduce((a, r) => a + r.cost, 0);
       const be        = perCust > 0 ? cost / perCust : 0;
-      const oneIn     = be > 0 ? audience / be : 0;
-      const cpm       = audience > 0 ? price / (audience / 1000) : 0;
-      const perReader = audience > 0 ? cost / audience : 0;
+      const single    = rows.length === 1 ? rows[0] : null;
+      const oneIn     = single && be > 0 ? single.audience / be : 0;
       const firstPlus = Math.max(1, Math.ceil(be - 1e-9));
-      const ready     = perCust > 0 && audience > 0;
-      const impossible = ready && be > audience;
+      const missingReach = rows.some(r => r.s.reach <= 0);
+      const ready     = rows.length > 0 && perCust > 0 && cost > 0;
+      const impossible = ready && single && single.audience > 0 && be > single.audience;
 
-      // Tabell: vad kampanjen ger vid olika antal nya kunder
-      const levels = Array.from(new Set([1, 2, 3, 5, 10, firstPlus])).sort((a, b) => a - b).slice(0, 6);
+      const levels   = Array.from(new Set([1, 2, 3, 5, 10, firstPlus])).sort((a, b) => a - b).slice(0, 6);
       const outcomes = levels.map(n => ({ n, net: n * perCust - cost, roi: cost > 0 ? ((n * perCust - cost) / cost) * 100 : 0 }));
 
       const aBe  = useCountUp(be);
       const aOne = useCountUp(oneIn);
+
+      const withReach = rows.filter(r => r.audience > 0);
+      const reachSentence = () => withReach.map((r, i) => {
+        const part = sek(r.audience) + " " + r.c.who;
+        return (i === 0 ? "" : i === withReach.length - 1 ? " och " : ", ") + part;
+      }).join("");
+      const plusLine = "Med " + firstPlus + (firstPlus === 1 ? " ny kund" : " nya kunder") + " är ni " + sek(firstPlus * perCust - cost) + " kr plus.";
 
       function generatePDF() {
         const now = new Date();
@@ -536,68 +584,73 @@
         const f1  = (n) => (n < 100 ? n.toFixed(1).replace('.', ',') : fmt(n));
         const f2  = (n) => new Intl.NumberFormat('sv-SE',{maximumFractionDigits:2}).format(n);
         const logo = '<div style="font-family:Newsreader,Georgia,serif;font-weight:400;font-size:26px;color:#1A1916;line-height:1">Informa<span style="color:#E85B7D">.</span></div>';
-
         const css = `
           @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300;1,6..72,400&family=Inter:wght@400;500;600&display=swap');
           *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
           html, body { font-family: 'Inter', system-ui, sans-serif; color: #1A1916; background: #F1ECE3;
             -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .doc-hdr { display:flex; justify-content:space-between; align-items:flex-start;
-            padding-bottom:14px; border-bottom:1px solid rgba(26,25,22,0.18); margin-bottom:28px; }
+            padding-bottom:14px; border-bottom:1px solid rgba(26,25,22,0.18); margin-bottom:24px; }
           .doc-hdr-r { text-align:right; font-size:11px; color:#5C5852; line-height:1.6; }
           .eyeb { font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8A8579; font-weight:500; margin-bottom:8px; }
-          h1 { font-family:'Newsreader',Georgia,serif; font-weight:300; font-size:38px; line-height:1.1; letter-spacing:-0.01em; margin-bottom:10px; }
-          .lede { font-size:12px; color:#5C5852; line-height:1.6; max-width:80%; margin-bottom:26px; }
-          .hero { background:#1E1B19; color:#F1ECE3; padding:26px 28px; margin-bottom:26px;
+          h1 { font-family:'Newsreader',Georgia,serif; font-weight:300; font-size:36px; line-height:1.1; letter-spacing:-0.01em; margin-bottom:10px; }
+          .lede { font-size:11.5px; color:#5C5852; line-height:1.6; max-width:82%; margin-bottom:22px; }
+          .hero { background:#1E1B19; color:#F1ECE3; padding:24px 28px; margin-bottom:22px;
             display:grid; grid-template-columns:1fr 1.3fr; gap:26px; align-items:end; }
           .hero .eyeb { color:rgba(241,236,227,0.62); }
-          .hero .big { font-family:'Newsreader',Georgia,serif; font-weight:300; font-size:60px; line-height:1; letter-spacing:-0.02em; }
+          .hero .big { font-family:'Newsreader',Georgia,serif; font-weight:300; font-size:58px; line-height:1; letter-spacing:-0.02em; }
           .hero .unit { font-family:'Newsreader',Georgia,serif; font-style:italic; font-weight:300; font-size:17px; color:rgba(241,236,227,0.76); margin-top:6px; }
-          .hero .note { font-size:12px; color:rgba(241,236,227,0.86); line-height:1.6; }
+          .hero .note { font-size:11.5px; color:rgba(241,236,227,0.86); line-height:1.6; }
           .hero .note b { color:#FA7896; font-weight:500; }
-          table { width:100%; border-collapse:collapse; margin-bottom:24px; }
-          td, th { padding:8px 8px; border-bottom:1px solid rgba(26,25,22,0.08); }
-          .calc td { font-size:11.5px; color:#5C5852; }
-          .calc td.how { font-size:10px; color:#8A8579; }
-          .calc td.v { text-align:right; font-family:'Newsreader',Georgia,serif; font-size:15px; color:#1A1916; white-space:nowrap; }
-          .calc tr.sum td { border-top:1px solid rgba(26,25,22,0.18); color:#1A1916; font-weight:600; }
-          .out th { font-size:8.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8A8579; font-weight:600;
-            text-align:right; border-bottom:1px solid rgba(26,25,22,0.18); }
-          .out th:first-child, .out td:first-child { text-align:left; }
-          .out td { font-family:'Newsreader',Georgia,serif; font-size:15px; text-align:right; }
-          .out td:first-child { font-family:'Inter',sans-serif; font-size:11px; color:#5C5852; }
-          .out tr.first td { font-weight:600; } .out tr.first td:first-child { color:#1A1916; }
+          table { width:100%; border-collapse:collapse; margin-bottom:20px; }
+          th { font-size:8.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8A8579; font-weight:600;
+            text-align:right; padding:7px 8px; border-bottom:1px solid rgba(26,25,22,0.18); }
+          td { padding:7px 8px; border-bottom:1px solid rgba(26,25,22,0.08); text-align:right;
+            font-family:'Newsreader',Georgia,serif; font-size:14px; white-space:nowrap; }
+          th:first-child, td:first-child { text-align:left; }
+          td:first-child { font-family:'Inter',sans-serif; font-size:11px; color:#5C5852; white-space:normal; }
+          tr.sum td { border-top:1px solid rgba(26,25,22,0.18); font-weight:600; } tr.sum td:first-child { color:#1A1916; }
+          tr.first td { font-weight:600; } tr.first td:first-child { color:#1A1916; }
           .neg { color:#E85B7D; }
-          .about { border-top:1px solid rgba(26,25,22,0.18); padding-top:14px; }
-          .about p { font-size:10.5px; color:#5C5852; line-height:1.65; max-width:86%; }
-          .foot { position:absolute; bottom:48px; left:76px; right:76px; display:flex; justify-content:space-between;
+          .src { font-size:8.5px; color:#8A8579; margin:-14px 0 18px; line-height:1.5; }
+          .about { border-top:1px solid rgba(26,25,22,0.18); padding-top:12px; }
+          .about p { font-size:10px; color:#5C5852; line-height:1.6; max-width:86%; }
+          .foot { position:absolute; bottom:46px; left:76px; right:76px; display:flex; justify-content:space-between;
             font-size:9px; color:#8A8579; border-top:1px solid rgba(26,25,22,0.08); padding-top:10px; }
         `;
-        const row = (l, how, v, sum) => '<tr' + (sum ? ' class="sum"' : '') + '><td>' + l + '</td><td class="how">' + how + '</td><td class="v">' + v + '</td></tr>';
-        const calc = '<table class="calc"><tbody>' +
-          row('Läsare i er målgrupp', fmt(reach) + ' per nummer × ' + target + ' %', fmt(audience)) +
-          row('Kampanjkostnad', fmt(price) + ' kr × ' + runs + ' införanden', fmt(cost) + ' kr') +
-          row('Bruttovinst per ny kund', fmt(order) + ' kr/år × ' + f2(years) + ' år × ' + margin + ' %', fmt(perCust) + ' kr') +
-          row('Nya kunder som krävs', fmt(cost) + ' kr ÷ ' + fmt(perCust) + ' kr', f1(be), true) +
-          '</tbody></table>';
-        const out = '<table class="out"><thead><tr><th>Om kampanjen ger</th><th>Bruttovinst</th><th>Netto</th><th>Avkastning</th></tr></thead><tbody>' +
+        const chanRows = rows.map(r =>
+          '<tr><td>' + r.c.name + '</td><td>' + fmt(r.s.price) + ' kr</td><td>' + r.s.units + ' ' + r.c.unitSuffix + '</td>' +
+          '<td>' + fmt(r.cost) + ' kr</td><td>' + (r.audience > 0 ? fmt(r.audience) + ' ' + r.c.who : 'saknas') + '</td></tr>').join('');
+        const chanTable = '<table><thead><tr><th>Kanal</th><th>Pris</th><th>Antal</th><th>Kostnad</th><th>Målgrupp nådd</th></tr></thead><tbody>' +
+          chanRows + '<tr class="sum"><td>Totalt</td><td></td><td></td><td>' + fmt(cost) + ' kr</td><td></td></tr></tbody></table>';
+        const sources = rows.map(r => r.c.name + ': ' + titleData(title, r.c.id).source).join(' · ');
+        const outTable = '<table><thead><tr><th>Om kampanjen ger</th><th>Bruttovinst</th><th>Netto</th><th>Avkastning</th></tr></thead><tbody>' +
           outcomes.map(o => '<tr' + (o.n === firstPlus ? ' class="first"' : '') + '><td>' + o.n + (o.n === 1 ? ' ny kund' : ' nya kunder') + '</td>' +
             '<td>' + fmt(o.n * perCust) + ' kr</td><td' + (o.net < 0 ? ' class="neg"' : '') + '>' + fmt(o.net) + ' kr</td>' +
-            '<td' + (o.roi < 0 ? ' class="neg"' : '') + '>' + fmt(o.roi) + ' %</td></tr>').join('') +
-          '</tbody></table>';
+            '<td' + (o.roi < 0 ? ' class="neg"' : '') + '>' + fmt(o.roi) + ' %</td></tr>').join('') + '</tbody></table>';
+        const heroNote = single && single.audience > 0
+          ? 'Det motsvarar <b>1 av ' + fmt(oneIn) + '</b> ' + single.c.who + ' i er målgrupp. '
+          : withReach.length > 0
+          ? 'Kampanjen når ' + withReach.map(r => fmt(r.audience) + ' ' + r.c.who).join(', ').replace(/, ([^,]*)$/, ' och $1') + ' i er målgrupp. '
+          : '';
 
         const page1 =
           '<div class="page" style="position:relative;">' +
             '<div class="doc-hdr">' + logo + '<div class="doc-hdr-r">' + (company ? company + '<br>' : '') + title + '<br>' + dateStr + '</div></div>' +
             '<div class="eyeb">Annonskalkyl</div>' +
-            '<h1>Vad annonsen behöver ge tillbaka<span style="color:#E85B7D">.</span></h1>' +
+            '<h1>Vad kampanjen behöver ge tillbaka<span style="color:#E85B7D">.</span></h1>' +
             '<div class="lede">Kalkylen bygger bara på två saker ni vet: vad kampanjen kostar och vad en ny kund är värd för er. ' +
-              'Den lovar inget utfall. Den visar hur många nya kunder som krävs för att annonsen ska gå ihop.</div>' +
-            '<div class="hero"><div><div class="eyeb">Annonsen går jämnt ut vid</div><div class="big">' + f1(be) + '</div><div class="unit">nya kunder</div></div>' +
-              '<div class="note">Det motsvarar <b>1 av ' + fmt(oneIn) + '</b> läsare i er målgrupp. ' +
-              'Med ' + firstPlus + (firstPlus === 1 ? ' ny kund' : ' nya kunder') + ' är ni ' + fmt(firstPlus * perCust - cost) + ' kr plus.</div></div>' +
-            '<div class="eyeb">Så räknar vi</div>' + calc +
-            '<div class="eyeb">Vad kampanjen ger</div>' + out +
+              'Den lovar inget utfall. Den visar hur många nya kunder som krävs för att kampanjen ska gå ihop.</div>' +
+            '<div class="hero"><div><div class="eyeb">Kampanjen går jämnt ut vid</div><div class="big">' + f1(be) + '</div><div class="unit">nya kunder</div></div>' +
+              '<div class="note">' + heroNote + 'Med ' + firstPlus + (firstPlus === 1 ? ' ny kund' : ' nya kunder') + ' är ni ' + fmt(firstPlus * perCust - cost) + ' kr plus.</div></div>' +
+            '<div class="eyeb">Kampanjen</div>' + chanTable +
+            '<div class="src">Räckvidd: ' + sources + '</div>' +
+            '<div class="eyeb">Er affär</div>' +
+            '<table><tbody>' +
+              '<tr><td>Bruttovinst per ny kund</td><td>' + fmt(order) + ' kr/år × ' + f2(years) + ' år × ' + margin + ' %</td><td>' + fmt(perCust) + ' kr</td></tr>' +
+              '<tr class="sum"><td>Nya kunder som krävs</td><td>' + fmt(cost) + ' kr ÷ ' + fmt(perCust) + ' kr</td><td>' + f1(be) + '</td></tr>' +
+            '</tbody></table>' +
+            '<div class="eyeb">Vad kampanjen ger</div>' + outTable +
             '<div class="about"><div class="eyeb">Om Informa</div>' +
               '<p>Informa driver medieförsäljningen åt några av Sveriges starkaste medievarumärken. ' +
               'Vi har gjort det sedan 1977 och kan läsarna, annonsörerna och marknaden. ' +
@@ -607,7 +660,7 @@
 
         const container = document.createElement('div');
         container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#F1ECE3;';
-        container.innerHTML = '<style>.page{width:794px!important;min-height:1123px;height:1123px!important;padding:56px 76px;overflow:hidden;box-sizing:border-box;background:#F1ECE3}</style><style>' + css + '</style>' + page1;
+        container.innerHTML = '<style>.page{width:794px!important;min-height:1123px;height:1123px!important;padding:54px 76px;overflow:hidden;box-sizing:border-box;background:#F1ECE3}</style><style>' + css + '</style>' + page1;
         document.body.appendChild(container);
         setToast('Genererar PDF…');
         const loadLib = (src) => new Promise((res, rej) => {
@@ -636,7 +689,7 @@
         });
       }
 
-      const th = { fontSize:"0.65rem", letterSpacing:"0.1em", textTransform:"uppercase", color:INK3,
+      const th  = { fontSize:"0.65rem", letterSpacing:"0.1em", textTransform:"uppercase", color:INK3,
         fontWeight:600, padding:"0.5rem 0.4rem", borderBottom:`1px solid ${HAIR}`, textAlign:"right" };
       const tdc = { padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`, textAlign:"right",
         fontFamily:SERIF, fontSize:"1.05rem" };
@@ -652,10 +705,10 @@
           <div style={{ textAlign:"center", marginBottom:"2.75rem" }}>
             <h1 style={{ fontFamily:SERIF, fontSize:"clamp(1.85rem,5vw,3.1rem)", fontWeight:300,
               color:INK, margin:"0 0 1rem", lineHeight:1.12, letterSpacing:"-0.01em" }}>
-              Vad annonsen behöver ge tillbaka<span style={{ color:PINK }}>.</span>
+              Vad kampanjen behöver ge tillbaka<span style={{ color:PINK }}>.</span>
             </h1>
-            <p style={{ color:INK2, fontSize:"1rem", maxWidth:"54ch", margin:"0 auto" }}>
-              Två saker räcker: vad kampanjen kostar och vad en ny kund är värd för er.
+            <p style={{ color:INK2, fontSize:"1rem", maxWidth:"56ch", margin:"0 auto" }}>
+              Välj kanaler, fyll i vad de kostar och vad en ny kund är värd för er.
               Kalkylen visar hur många nya kunder som krävs, utan att gissa på respons.
             </p>
           </div>
@@ -665,12 +718,47 @@
               <div style={eyebrow}>Kampanjen</div>
               <TextInput label="Annonsör" value={company} onChange={setCompany} placeholder="Företagsnamn" />
               <SelectInput label="Titel" value={title} onChange={setTitle} options={TITLES} />
-              <SliderInput label="Pris per införande" value={price} min={0} max={300000} step={1000} onChange={setPrice} suffix="kr" />
-              <SliderInput label="Antal införanden" value={runs} min={1} max={24} step={1} onChange={setRuns} suffix="st" />
 
-              <div style={sectionHead}>Läsarna</div>
-              <NumberInput label="Läsare per nummer" value={reach} onChange={setReach} suffix="st" min={0} step={1000} hint={td.source} />
-              <SliderInput label="Andel av läsarna som är er målgrupp" value={target} min={0} max={100} step={1} onChange={setTarget} suffix="%" />
+              <div style={{ marginBottom:"1.25rem" }}>
+                <div style={{ marginBottom:"0.4rem", fontSize:"0.84rem", fontWeight:500, color:INK2 }}>Kanaler</div>
+                <div style={{ display:"flex", border:`1px solid ${HAIR}`, borderRadius:"2px", padding:"3px", gap:"2px" }}>
+                  {CHANNELS.map(c => {
+                    const on = ch[c.id] && ch[c.id].on;
+                    return (
+                      <button key={c.id} type="button" aria-pressed={on ? "true" : "false"} onClick={() => upd(c.id, { on: !on })}
+                        style={{ flex:1, padding:"0.5rem", borderRadius:"2px", border:"none", cursor:"pointer",
+                          fontFamily:"inherit", fontSize:"0.85rem", fontWeight:500,
+                          background: on ? NOIR : "transparent", color: on ? CREAM : INK2, transition:"all 0.2s" }}>
+                        {on ? "✓ " : ""}{c.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {CHANNELS.filter(c => ch[c.id] && ch[c.id].on).map(c => {
+                const s = ch[c.id];
+                return (
+                  <div key={c.id}>
+                    <div style={sectionHead}>{c.name}</div>
+                    <NumberInput label={c.priceLabel} value={s.price} onChange={v => upd(c.id, { price: v })} suffix="kr" min={0} step={1000} />
+                    <SliderInput label={c.unitLabel} value={s.units} min={1} max={c.maxUnits} step={1}
+                      onChange={v => upd(c.id, { units: v })} suffix={c.unitSuffix === "st" ? "st" : "v"} />
+                    <NumberInput label={c.reachLabel} value={s.reach} onChange={v => upd(c.id, { reach: v })} suffix="st" min={0} step={1000}
+                      hint={titleData(title, c.id).source} />
+                    {c.id === "web" && (
+                      <NumberInput label="Visningar per vecka" value={s.imps} onChange={v => upd(c.id, { imps: v })} suffix="st" min={0} step={10000}
+                        hint="Valfritt, ger kostnad per tusen visningar" />
+                    )}
+                    {c.id === "nl" && (
+                      <SliderInput label="Öppningsgrad" value={s.open} min={0} max={100} step={1}
+                        onChange={v => upd(c.id, { open: v })} suffix="%" hint="Valfritt, från mediakit" />
+                    )}
+                    <SliderInput label={"Andel av " + c.who + "na som är er målgrupp"} value={s.target} min={0} max={100} step={1}
+                      onChange={v => upd(c.id, { target: v })} suffix="%" />
+                  </div>
+                );
+              })}
 
               <div style={sectionHead}>Er affär</div>
               <NumberInput label="Snittaffär per kund och år" value={order} onChange={setOrder} suffix="kr" min={0} step={5000} />
@@ -680,29 +768,50 @@
 
             <div>
               <div style={heroCard}>
-                <div style={{ ...eyebrow, color:"rgba(241,236,227,0.62)" }}>Annonsen går jämnt ut vid</div>
-                <span style={bigNum}>{perCust > 0 ? num1(aBe) : "n/a"}</span>
+                <div style={{ ...eyebrow, color:"rgba(241,236,227,0.62)" }}>Kampanjen går jämnt ut vid</div>
+                <span style={bigNum}>{ready ? num1(aBe) : "n/a"}</span>
                 <div style={{ fontFamily:SERIF, fontStyle:"italic", fontWeight:300,
                   fontSize:"1.35rem", color:"rgba(241,236,227,0.76)", marginTop:"0.6rem" }}>
                   nya kunder
                 </div>
                 <HeroNote>
-                  {!ready
-                    ? <React.Fragment>Fyll i läsare, målgrupp och vad en kund är värd så räknar vi ut nollpunkten.</React.Fragment>
+                  {rows.length === 0
+                    ? <React.Fragment>Välj minst en kanal.</React.Fragment>
+                    : !ready
+                    ? <React.Fragment>Fyll i pris och vad en kund är värd så räknar vi ut nollpunkten.</React.Fragment>
                     : impossible
-                    ? <React.Fragment>Det är fler kunder än det finns läsare i målgruppen. Kampanjen kostar för mycket i förhållande till vad en kund är värd.</React.Fragment>
-                    : <React.Fragment>Det motsvarar <Em>1 av {sek(aOne)}</Em> läsare i er målgrupp. Med {firstPlus} {firstPlus === 1 ? "ny kund" : "nya kunder"} är ni {sek(firstPlus * perCust - cost)} kr plus.</React.Fragment>}
+                    ? <React.Fragment>Det är fler kunder än det finns {single.c.who} i målgruppen. Kampanjen kostar för mycket i förhållande till vad en kund är värd.</React.Fragment>
+                    : single && single.audience > 0
+                    ? <React.Fragment>Det motsvarar <Em>1 av {sek(aOne)}</Em> {single.c.who} i er målgrupp. Med {firstPlus} {firstPlus === 1 ? "ny kund" : "nya kunder"} är ni {sek(firstPlus * perCust - cost)} kr plus.</React.Fragment>
+                    : withReach.length > 0
+                    ? <React.Fragment>Kampanjen når {reachSentence()} i er målgrupp. {plusLine}</React.Fragment>
+                    : <React.Fragment>{plusLine} Fyll i räckvidd från mediakit så ser ni också hur stor andel av målgruppen det motsvarar.</React.Fragment>}
                 </HeroNote>
               </div>
 
-              <div style={{ ...card, marginTop:"1.25rem" }}>
-                <div style={eyebrow}>Så räknar vi</div>
-                <KeyRow k="Läsare i er målgrupp" v={sek(audience)} />
-                <KeyRow k="Kampanjkostnad" v={sek(cost) + " kr"} />
-                <KeyRow k="Bruttovinst per ny kund" v={sek(perCust) + " kr"} />
-                <KeyRow k="Kostnad per tusen i målgruppen, per införande" v={sek(cpm) + " kr"} />
-                <KeyRow k="Kostnad per läsare i målgruppen, hela kampanjen" v={dec1(perReader) + " kr"} />
-              </div>
+              {rows.length > 0 && (
+                <div style={{ ...card, marginTop:"1.25rem" }}>
+                  <div style={eyebrow}>Per kanal</div>
+                  {rows.map(r => (
+                    <div key={r.c.id} style={{ padding:"0.7rem 0", borderBottom:`1px solid ${HAIR2}` }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", gap:"1rem" }}>
+                        <span style={{ fontSize:"0.9rem", color:INK, fontWeight:600 }}>{r.c.name}</span>
+                        <span style={{ fontFamily:SERIF, fontSize:"1.25rem" }}>{sek(r.cost)} kr</span>
+                      </div>
+                      <div style={{ fontSize:"0.75rem", color:INK3, marginTop:"0.25rem", lineHeight:1.6 }}>
+                        {sek(r.s.price)} kr × {r.s.units} {r.c.unitSuffix} · {r.audience > 0
+                          ? "når " + sek(r.audience) + " " + r.c.who + " i målgruppen" + (r.c.id === "print" ? " per nummer" : " per vecka")
+                          : "räckvidd saknas"}
+                        {r.audience > 0 && <React.Fragment> · {sek(r.cpm)} kr per tusen i målgruppen och {r.c.id === "print" ? "införande" : "vecka"}</React.Fragment>}
+                        {r.effCpm > 0 && <React.Fragment> · {sek(r.effCpm)} kr per tusen visningar</React.Fragment>}
+                        {r.opens > 0 && <React.Fragment> · {sek(r.opens)} öppnar varje utskick</React.Fragment>}
+                      </div>
+                    </div>
+                  ))}
+                  <KeyRow k="Total kampanjkostnad" v={sek(cost) + " kr"} />
+                  <KeyRow k="Bruttovinst per ny kund" v={sek(perCust) + " kr"} />
+                </div>
+              )}
 
               <div style={{ ...card, marginTop:"1.25rem" }}>
                 <div style={eyebrow}>Vad kampanjen ger</div>
@@ -730,9 +839,9 @@
               </div>
 
               <div className="cta-row no-print" style={{ display:"flex", gap:"0.75rem", marginTop:"1.25rem" }}>
-                <button type="button" onClick={generatePDF}
-                  style={{ flex:1, padding:"0.85rem 1.5rem", background:NOIR, color:CREAM, border:"none",
-                    borderRadius:"2px", fontSize:"0.95rem", fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+                <button type="button" onClick={generatePDF} disabled={!ready}
+                  style={{ flex:1, padding:"0.85rem 1.5rem", background: ready ? NOIR : "#CFC8BA", color:CREAM, border:"none",
+                    borderRadius:"2px", fontSize:"0.95rem", fontWeight:600, cursor: ready ? "pointer" : "not-allowed", fontFamily:"inherit" }}>
                   Ladda ner som PDF
                 </button>
                 <button type="button" onClick={() => window.print()}
@@ -743,8 +852,9 @@
               </div>
 
               <Note>
-                Vi räknar på bruttovinst, inte omsättning, eftersom det är vinsten som ska betala annonsen.
-                Pilen visar första antalet kunder där kampanjen går plus.
+                Vi räknar på bruttovinst, inte omsättning, eftersom det är vinsten som ska betala kampanjen.
+                {rows.length > 1 && " Samma person kan finnas i flera kanaler, så räckvidden per kanal läggs inte ihop."}
+                {missingReach && " En kanal saknar räckvidd. Nollpunkten stämmer ändå, men räckvidden behövs för att visa hur stor andel av målgruppen det motsvarar."}
               </Note>
             </div>
           </div>
