@@ -477,7 +477,7 @@
       { id:"web",   name:"Webb",       priceLabel:"Pris per vecka",     unitLabel:"Antal veckor",     unitSuffix:"veckor",
         reachLabel:"Unika besökare per vecka", who:"besökare",  defPrice:25000, defUnits:4, defTarget:20, maxUnits:52 },
       { id:"nl",    name:"Nyhetsbrev", priceLabel:"Pris per vecka",     unitLabel:"Antal veckor",     unitSuffix:"veckor",
-        reachLabel:"Mottagare",                who:"mottagare", defPrice:20000, defUnits:4, defTarget:30, maxUnits:52 },
+        reachLabel:"Mottagare",                who:"mottagare", defPrice:20000, defUnits:4, defTarget:100, maxUnits:52, noTarget:true },
     ];
 
     // Publika siffror per titel och kanal. reach 0 = ingen publik siffra, fylls i från mediakit.
@@ -547,9 +547,10 @@
       const rows = CHANNELS.filter(c => ch[c.id] && ch[c.id].on).map(c => {
         const s = ch[c.id];
         const cost = s.price * s.units;
-        const audience = s.reach * (s.target / 100);
+        const audience = c.noTarget ? s.reach : s.reach * (s.target / 100);
+        const scope = c.noTarget ? "" : " i målgruppen";
         return {
-          c, s, cost, audience,
+          c, s, cost, audience, scope,
           cpm: audience > 0 ? s.price / (audience / 1000) : 0,           // per införande eller vecka
           effCpm: c.id === "web" && s.imps > 0 ? s.price / (s.imps / 1000) : 0,
           opens: c.id === "nl" && s.open > 0 ? s.reach * (s.open / 100) : 0,
@@ -571,10 +572,13 @@
       const aOne = useCountUp(oneIn);
 
       const withReach = rows.filter(r => r.audience > 0);
-      const reachSentence = () => withReach.map((r, i) => {
-        const part = sek(r.audience) + " " + r.c.who;
-        return (i === 0 ? "" : i === withReach.length - 1 ? " och " : ", ") + part;
-      }).join("");
+      const joinSv = (parts) => parts.length <= 1 ? (parts[0] || "") : parts.slice(0, -1).join(", ") + " och " + parts[parts.length - 1];
+      const reachText = (f) => {
+        const tg = withReach.filter(r => !r.c.noTarget).map(r => f(r.audience) + " " + r.c.who);
+        const nl = withReach.filter(r => r.c.noTarget).map(r => f(r.audience) + " nyhetsbrevsmottagare");
+        return [tg.length ? joinSv(tg) + " i er målgrupp" : "", ...nl].filter(Boolean).join(" samt ");
+      };
+      const reachSentence = () => reachText(sek);
       const plusLine = "Med " + firstPlus + (firstPlus === 1 ? " ny kund" : " nya kunder") + " är ni " + sek(firstPlus * perCust - cost) + " kr plus.";
 
       function generatePDF() {
@@ -621,7 +625,7 @@
         const chanRows = rows.map(r =>
           '<tr><td>' + r.c.name + '</td><td>' + fmt(r.s.price) + ' kr</td><td>' + r.s.units + ' ' + r.c.unitSuffix + '</td>' +
           '<td>' + fmt(r.cost) + ' kr</td><td>' + (r.audience > 0 ? fmt(r.audience) + ' ' + r.c.who : 'saknas') + '</td></tr>').join('');
-        const chanTable = '<table><thead><tr><th>Kanal</th><th>Pris</th><th>Antal</th><th>Kostnad</th><th>Målgrupp nådd</th></tr></thead><tbody>' +
+        const chanTable = '<table><thead><tr><th>Kanal</th><th>Pris</th><th>Antal</th><th>Kostnad</th><th>Når</th></tr></thead><tbody>' +
           chanRows + '<tr class="sum"><td>Totalt</td><td></td><td></td><td>' + fmt(cost) + ' kr</td><td></td></tr></tbody></table>';
         const sources = rows.map(r => r.c.name + ': ' + titleData(title, r.c.id).source).join(' · ');
         const outTable = '<table><thead><tr><th>Om kampanjen ger</th><th>Bruttovinst</th><th>Netto</th><th>Avkastning</th></tr></thead><tbody>' +
@@ -629,9 +633,9 @@
             '<td>' + fmt(o.n * perCust) + ' kr</td><td' + (o.net < 0 ? ' class="neg"' : '') + '>' + fmt(o.net) + ' kr</td>' +
             '<td' + (o.roi < 0 ? ' class="neg"' : '') + '>' + fmt(o.roi) + ' %</td></tr>').join('') + '</tbody></table>';
         const heroNote = single && single.audience > 0
-          ? 'Det motsvarar <b>1 av ' + fmt(oneIn) + '</b> ' + single.c.who + ' i er målgrupp. '
+          ? 'Det motsvarar <b>1 av ' + fmt(oneIn) + '</b> ' + single.c.who + (single.c.noTarget ? '' : ' i er målgrupp') + '. '
           : withReach.length > 0
-          ? 'Kampanjen når ' + withReach.map(r => fmt(r.audience) + ' ' + r.c.who).join(', ').replace(/, ([^,]*)$/, ' och $1') + ' i er målgrupp. '
+          ? 'Kampanjen når ' + reachText(fmt) + '. '
           : '';
 
         const page1 =
@@ -754,8 +758,10 @@
                       <SliderInput label="Öppningsgrad" value={s.open} min={0} max={100} step={1}
                         onChange={v => upd(c.id, { open: v })} suffix="%" hint="Valfritt, från mediakit" />
                     )}
-                    <SliderInput label={"Andel av " + c.who + "na som är er målgrupp"} value={s.target} min={0} max={100} step={1}
-                      onChange={v => upd(c.id, { target: v })} suffix="%" />
+                    {!c.noTarget && (
+                      <SliderInput label={"Andel av " + c.who + "na som är er målgrupp"} value={s.target} min={0} max={100} step={1}
+                        onChange={v => upd(c.id, { target: v })} suffix="%" />
+                    )}
                   </div>
                 );
               })}
@@ -782,9 +788,9 @@
                     : impossible
                     ? <React.Fragment>Det är fler kunder än det finns {single.c.who} i målgruppen. Kampanjen kostar för mycket i förhållande till vad en kund är värd.</React.Fragment>
                     : single && single.audience > 0
-                    ? <React.Fragment>Det motsvarar <Em>1 av {sek(aOne)}</Em> {single.c.who} i er målgrupp. Med {firstPlus} {firstPlus === 1 ? "ny kund" : "nya kunder"} är ni {sek(firstPlus * perCust - cost)} kr plus.</React.Fragment>
+                    ? <React.Fragment>Det motsvarar <Em>1 av {sek(aOne)}</Em> {single.c.who}{single.c.noTarget ? "" : " i er målgrupp"}. Med {firstPlus} {firstPlus === 1 ? "ny kund" : "nya kunder"} är ni {sek(firstPlus * perCust - cost)} kr plus.</React.Fragment>
                     : withReach.length > 0
-                    ? <React.Fragment>Kampanjen når {reachSentence()} i er målgrupp. {plusLine}</React.Fragment>
+                    ? <React.Fragment>Kampanjen når {reachSentence()}. {plusLine}</React.Fragment>
                     : <React.Fragment>{plusLine} Fyll i räckvidd från mediakit så ser ni också hur stor andel av målgruppen det motsvarar.</React.Fragment>}
                 </HeroNote>
               </div>
@@ -800,9 +806,9 @@
                       </div>
                       <div style={{ fontSize:"0.75rem", color:INK3, marginTop:"0.25rem", lineHeight:1.6 }}>
                         {sek(r.s.price)} kr × {r.s.units} {r.c.unitSuffix} · {r.audience > 0
-                          ? "når " + sek(r.audience) + " " + r.c.who + " i målgruppen" + (r.c.id === "print" ? " per nummer" : " per vecka")
+                          ? "når " + sek(r.audience) + " " + r.c.who + r.scope + (r.c.id === "print" ? " per nummer" : " per vecka")
                           : "räckvidd saknas"}
-                        {r.audience > 0 && <React.Fragment> · {sek(r.cpm)} kr per tusen i målgruppen och {r.c.id === "print" ? "införande" : "vecka"}</React.Fragment>}
+                        {r.audience > 0 && <React.Fragment> · {sek(r.cpm)} kr per tusen {r.c.noTarget ? "mottagare" : "i målgruppen"} och {r.c.id === "print" ? "införande" : "vecka"}</React.Fragment>}
                         {r.effCpm > 0 && <React.Fragment> · {sek(r.effCpm)} kr per tusen visningar</React.Fragment>}
                         {r.opens > 0 && <React.Fragment> · {sek(r.opens)} öppnar varje utskick</React.Fragment>}
                       </div>
