@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Informa annonskalkylator</title>
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Ccircle cx='60' cy='60' r='60' fill='%231E1B19'/%3E%3Ctext x='56' y='64' dominant-baseline='central' text-anchor='middle' font-family='Georgia,serif' font-size='66' fill='%23F1ECE3'%3EI%3C/text%3E%3Ccircle cx='82' cy='85' r='7' fill='%23FA7896'/%3E%3C/svg%3E" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300;1,6..72,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: #F1ECE3;
+      color: #1A1916;
+      font-family: 'Inter', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Slider */
+    .informa-slider {
+      -webkit-appearance: none; appearance: none;
+      width: 100%; height: 4px;
+      border-radius: 2px; outline: none;
+      cursor: pointer; display: block;
+    }
+    .informa-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #E85B7D; cursor: pointer;
+      border: 2px solid #F1ECE3;
+      transition: transform 0.1s;
+    }
+    .informa-slider::-webkit-slider-thumb:active { transform: scale(1.15); }
+    .informa-slider::-moz-range-thumb {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #E85B7D; cursor: pointer;
+      border: 2px solid #F1ECE3;
+    }
+    .informa-slider::-moz-range-track  { height: 4px; border-radius: 2px; background: #DFD8CB; }
+    .informa-slider::-moz-range-progress { height: 4px; border-radius: 2px 0 0 2px; background: #E85B7D; }
+
+    /* Number input – remove spinners */
+    .no-spin::-webkit-inner-spin-button,
+    .no-spin::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .no-spin { -moz-appearance: textfield; }
+
+    /* Focus */
+    input:focus, select:focus {
+      border-color: #E85B7D !important;
+      outline: none;
+    }
+
+    /* Animations */
+    @keyframes fadeUp   { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes pinShake {
+      0%,100% { transform:translateX(0); }
+      15%  { transform:translateX(-9px); }  30%  { transform:translateX(8px); }
+      45%  { transform:translateX(-6px); }  60%  { transform:translateX(5px); }
+      75%  { transform:translateX(-3px); }  90%  { transform:translateX(2px); }
+    }
+    .tab-in { animation: fadeUp 0.3s ease both; }
+
+    /* Toast */
+    @keyframes toastIn  { from { opacity:0; transform:translateY(16px) scale(0.96); } to { opacity:1; transform:none; } }
+    @keyframes toastOut { from { opacity:1; } to { opacity:0; transform:translateY(8px); } }
+    .toast     { animation: toastIn  0.28s ease both; }
+    .toast-out { animation: toastOut 0.28s ease both; }
+
+    /* Print styles */
+    @media print {
+      .no-print { display: none !important; }
+      header    { display: none !important; }
+      body      { background: white; }
+      .tab-in   { animation: none !important; }
+      .print-header {
+        display: flex !important;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.75rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #1A1916;
+      }
+    }
+    .print-header { display: none; }
+
+    /* Mobile */
+    @media (max-width: 600px) {
+      .slider-row { flex-direction: column; align-items: stretch !important; gap: 0.5rem !important; }
+      .slider-number-wrap { justify-content: flex-end; }
+      .cta-row { flex-direction: column !important; }
+      .cta-row a, .cta-row button { width: 100% !important; text-align: center; }
+      .split { grid-template-columns: 1fr !important; }
+      .quad  { grid-template-columns: 1fr 1fr !important; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.4/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ── Informa brand 2026 ────────────────────────────────────────────────────
+    const PINK  = "#E85B7D";              // rosa på ljus yta
+    const ROSA  = "#FA7896";              // accent på noir
+    const INK   = "#1A1916";
+    const INK2  = "#5C5852";
+    const INK3  = "#8A8579";
+    const CREAM = "#F1ECE3";
+    const PAPER = "#FBF7EF";
+    const NOIR  = "#1E1B19";
+    const HAIR  = "rgba(26,25,22,0.14)";  // hårfin linje
+    const HAIR2 = "rgba(26,25,22,0.08)";
+    const SERIF = "'Newsreader',serif";
+
+    // Ordmärket "Informa." med rosa slutpunkt
+    const Wordmark = ({ size = "1.6rem", color = INK, dot = PINK }) => (
+      <span style={{ fontFamily:SERIF, fontWeight:400, fontSize:size, color, letterSpacing:"0.004em", lineHeight:1 }}>
+        Informa<span style={{ color: dot }}>.</span>
+      </span>
+    );
+
+    // ──────────────────────────────────────────────────────────────────────────
+    const sek = (n) =>
+      new Intl.NumberFormat("sv-SE").format(Math.round(n))
+        .replace(/ | | /g, " ");
+
+    const dec1 = (n) =>
+      new Intl.NumberFormat("sv-SE", { minimumFractionDigits:1, maximumFractionDigits:1 }).format(n)
+        .replace(/ | | /g, " ");
+
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+    // Titlar Informa säljer annonser för (publikt bekräftade uppdrag)
+    const TITLES = ["Läkartidningen","Dagens Samhälle","Ny Teknik","Energi & Miljö",
+                    "Aktuell Hållbarhet","Besöksliv","Annan titel"];
+
+    // ────────── localStorage hook ────────────────────────────────────────────
+    function useLS(key, init) {
+      const [val, setVal] = useState(() => {
+        try {
+          const raw = localStorage.getItem(key);
+          return raw !== null ? JSON.parse(raw) : init;
+        } catch (e) { return init; }
+      });
+      const set = useCallback((v) => {
+        setVal(v);
+        try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {}
+      }, [key]);
+      return [val, set];
+    }
+
+    // ────────── Count-up animation ──────────────────────────────────────────────
+    function useCountUp(target, ms = 520) {
+      const [val, setVal]  = useState(target);
+      const fromRef        = useRef(target);
+      const rafRef         = useRef(null);
+      useEffect(() => {
+        const from = fromRef.current, to = target, t0 = performance.now();
+        cancelAnimationFrame(rafRef.current);
+        const tick = (now) => {
+          const p = Math.min((now - t0) / ms, 1);
+          const e = 1 - Math.pow(1 - p, 3);
+          setVal(from + (to - from) * e);
+          if (p < 1) rafRef.current = requestAnimationFrame(tick);
+          else fromRef.current = to;
+        };
+        rafRef.current = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(rafRef.current);
+      }, [target]);
+      return val;
+    }
+
+    // ────────── Toast notification ─────────────────────────────────────────────
+    function Toast({ msg, onDone }) {
+      const [out, setOut] = useState(false);
+      useEffect(() => {
+        const t1 = setTimeout(() => setOut(true), 2200);
+        const t2 = setTimeout(() => { if (onDone) onDone(); }, 2500);
+        return () => { clearTimeout(t1); clearTimeout(t2); };
+      }, []);
+      return (
+        <div className={out ? "toast-out" : "toast"} style={{
+          position:"fixed", bottom:32, left:"50%", transform:"translateX(-50%)",
+          background:NOIR, color:CREAM, padding:"0.7rem 1.5rem",
+          borderRadius:"2px", fontSize:"0.9rem", fontWeight:500,
+          zIndex:9999, whiteSpace:"nowrap"
+        }}>{msg}</div>
+      );
+    }
+
+    // ────────── Slider + editable number input ──────────────────────────────────
+    function SliderInput({ label, value, min, max, step=1, onChange, suffix="", hint }) {
+      const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
+      const onNum = e => {
+        const v = Number(e.target.value);
+        if (!isNaN(v)) onChange(clamp(v, min, max));
+      };
+      const wide = suffix === "kr" ? "7.5rem" : (suffix === "st" || suffix === "mån" || suffix === "dgr") ? "4.5rem" : "4rem";
+      return (
+        <div style={{ marginBottom:"1.5rem" }}>
+          <div style={{ marginBottom:"0.45rem", display:"flex", alignItems:"baseline", justifyContent:"space-between", gap:"0.5rem", flexWrap:"wrap" }}>
+            <span style={{ fontSize:"0.84rem", fontWeight:500, color:INK2 }}>{label}</span>
+            {hint && <span style={{ fontSize:"0.7rem", color:INK3 }}>{hint}</span>}
+          </div>
+          <div className="slider-row" style={{ display:"flex", alignItems:"center", gap:"0.75rem" }}>
+            <div style={{ flex:1 }}>
+              <input type="range" min={min} max={max} step={step} value={value}
+                onChange={e => onChange(Number(e.target.value))}
+                className="informa-slider"
+                aria-label={label}
+                style={{ background:`linear-gradient(to right,${PINK} ${pct}%,#DFD8CB ${pct}%)` }}
+              />
+              <div style={{ display:"flex", justifyContent:"space-between", fontSize:"0.67rem", color:INK3, marginTop:"0.15rem" }}>
+                <span>{sek(min)}{suffix==="%"?"%":""}</span>
+                <span>{sek(max)}{suffix==="%"?"%":""}</span>
+              </div>
+            </div>
+            <div className="slider-number-wrap" style={{ display:"flex", alignItems:"center", gap:"0.2rem", flexShrink:0 }}>
+              <input type="number" value={value} min={min} max={max} step={step}
+                onChange={onNum} onFocus={e => e.target.select()} className="no-spin"
+                style={{
+                  width: wide,
+                  padding:"0.35rem 0.5rem", borderRadius:"2px",
+                  border:`1px solid ${HAIR}`, fontSize:"0.9rem",
+                  fontWeight:600, color:PINK, textAlign:"right",
+                  fontFamily:"inherit", background:PAPER,
+                }}
+              />
+              {suffix && <span style={{ fontSize:"0.8rem", color:INK3, fontWeight:500, whiteSpace:"nowrap" }}>{suffix}</span>}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ────────── Number input (free manual entry, no slider) ───────────────────
+    function NumberInput({ label, value, onChange, suffix="", min, max, step=1, hint }) {
+      const onNum = e => {
+        const raw = e.target.value;
+        if (raw === "") { onChange(0); return; }
+        const v = Number(raw);
+        if (isNaN(v)) return;
+        let next = v;
+        if (typeof min === "number") next = Math.max(min, next);
+        if (typeof max === "number") next = Math.min(max, next);
+        onChange(next);
+      };
+      return (
+        <div style={{ marginBottom:"1.25rem" }}>
+          <div style={{ marginBottom:"0.4rem", display:"flex", alignItems:"baseline", justifyContent:"space-between", gap:"0.5rem", flexWrap:"wrap" }}>
+            <span style={{ fontSize:"0.84rem", fontWeight:500, color:INK2 }}>{label}</span>
+            {hint && <span style={{ fontSize:"0.7rem", color:INK3 }}>{hint}</span>}
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:"0.5rem" }}>
+            <input type="number" value={value} step={step} onChange={onNum}
+              onFocus={e => e.target.select()} className="no-spin"
+              style={{
+                flex:1, maxWidth:"10rem", padding:"0.55rem 0.75rem", borderRadius:"2px",
+                border:`1px solid ${HAIR}`, fontSize:"0.95rem", fontWeight:600,
+                color:PINK, textAlign:"right", fontFamily:"inherit", background:PAPER,
+              }}
+            />
+            {suffix && <span style={{ fontSize:"0.85rem", color:INK3, fontWeight:500, whiteSpace:"nowrap" }}>{suffix}</span>}
+          </div>
+        </div>
+      );
+    }
+
+    function TextInput({ label, value, onChange, placeholder }) {
+      return (
+        <div style={{ marginBottom:"1.25rem" }}>
+          <div style={{ marginBottom:"0.4rem", fontSize:"0.84rem", fontWeight:500, color:INK2 }}>{label}</div>
+          <input type="text" value={value} placeholder={placeholder}
+            onChange={e => onChange(e.target.value)}
+            style={{
+              width:"100%", padding:"0.55rem 0.75rem", borderRadius:"2px",
+              border:`1px solid ${HAIR}`, fontSize:"0.95rem",
+              fontFamily:"inherit", background:PAPER, color:INK,
+            }}
+          />
+        </div>
+      );
+    }
+
+    function SelectInput({ label, value, onChange, options }) {
+      return (
+        <div style={{ marginBottom:"1.25rem" }}>
+          <div style={{ marginBottom:"0.4rem", fontSize:"0.84rem", fontWeight:500, color:INK2 }}>{label}</div>
+          <select value={value} onChange={e => onChange(e.target.value)}
+            style={{
+              width:"100%", padding:"0.55rem 0.75rem", borderRadius:"2px",
+              border:`1px solid ${HAIR}`, fontSize:"0.95rem",
+              fontFamily:"inherit", background:PAPER, color:INK, cursor:"pointer",
+            }}>
+            {options.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+      );
+    }
+
+    // ────────── Nollpunktsmätare ───────────────────────────────────────────────
+    function BreakEven({ actual, breakeven, unit, label }) {
+      const top = Math.max(actual, breakeven, 0.0001) / 0.82;
+      const fill = clamp((actual / top) * 100, 0, 100);
+      const mark = clamp((breakeven / top) * 100, 0, 100);
+      const over = actual >= breakeven;
+      return (
+        <div style={{ marginTop:"1.5rem" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:"0.72rem",
+            color:"rgba(241,236,227,0.6)", marginBottom:"0.5rem" }}>
+            <span>{label}</span><span>Nollpunkt</span>
+          </div>
+          <div style={{ position:"relative", height:3, background:"rgba(241,236,227,0.18)" }}>
+            <div style={{ position:"absolute", left:0, top:0, bottom:0, width:fill+"%",
+              background: over ? CREAM : "rgba(241,236,227,0.55)", transition:"width 0.25s ease" }} />
+            <div style={{ position:"absolute", left:mark+"%", top:-6, bottom:-6, width:2,
+              background:ROSA, transition:"left 0.25s ease" }} />
+          </div>
+        </div>
+      );
+    }
+
+    // ────────── PIN screen with lockout ────────────────────────────────────────
+    function PinScreen({ onUnlock }) {
+      const [pin,       setPin]       = useState("");
+      const [error,     setError]     = useState(false);
+      const [shake,     setShake]     = useState(false);
+      const [attempts,  setAttempts]  = useState(0);
+      const [lockUntil, setLockUntil] = useState(0);
+      const [now,       setNow]       = useState(Date.now());
+
+      useEffect(() => {
+        if (lockUntil <= Date.now()) return;
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+      }, [lockUntil]);
+
+      const locked   = now < lockUntil;
+      const secsLeft = locked ? Math.ceil((lockUntil - now) / 1000) : 0;
+
+      const tryUnlock = () => {
+        if (locked) return;
+        if (pin.trim() === "champions") {
+          onUnlock();
+        } else {
+          const next = attempts + 1;
+          setAttempts(next);
+          setError(true); setShake(true); setPin("");
+          setTimeout(() => setShake(false), 460);
+          if (next >= 3) {
+            setLockUntil(Date.now() + 30000);
+            setAttempts(0);
+            setNow(Date.now());
+          }
+        }
+      };
+
+      return (
+        <div style={{ display:"flex", justifyContent:"center", alignItems:"center", minHeight:"68vh", padding:"1.5rem" }}>
+          <div style={{
+            background:PAPER, borderRadius:"4px", padding:"3rem 2.5rem",
+            width:"100%", maxWidth:400, textAlign:"center",
+            border:`1px solid ${HAIR}`,
+            animation: shake ? "pinShake 0.46s ease" : "none",
+          }}>
+            <div style={{ marginBottom:"1.25rem" }}><Wordmark size="2.2rem" /></div>
+            <div style={{ fontSize:"1.1rem", color:PINK, marginBottom:"1rem", lineHeight:1 }}>&#10022;</div>
+            <h2 style={{ fontFamily:SERIF, fontSize:"1.5rem", fontWeight:400, color:INK, margin:"0 0 0.5rem" }}>
+              Internt verktyg
+            </h2>
+            <p style={{ color:INK3, fontSize:"0.875rem", margin:"0 0 2rem" }}>Ange PIN-kod för att fortsätta</p>
+
+            {locked ? (
+              <div style={{ background:"#F5E9E5", border:"1px solid #DDBBB1", borderRadius:"2px", padding:"1.25rem", marginBottom:"1.25rem" }}>
+                <p style={{ color:"#9C4F44", fontWeight:600, fontSize:"0.95rem", margin:"0 0 0.25rem" }}>För många försök</p>
+                <p style={{ color:"#9C4F44", fontSize:"0.85rem", margin:0 }}>Försök igen om <strong>{secsLeft}</strong> sekunder</p>
+              </div>
+            ) : (
+              <React.Fragment>
+                <input
+                  type="password" autoCapitalize="none" autoCorrect="off" autoComplete="off" spellCheck={false}
+                  value={pin}
+                  onChange={e => { setPin(e.target.value); setError(false); }}
+                  onKeyDown={e => { if (e.key === "Enter") tryUnlock(); }}
+                  placeholder="PIN-kod"
+                  autoFocus
+                  style={{
+                    display:"block", width:"100%", padding:"0.9rem 1rem",
+                    borderRadius:"2px",
+                    border:`1px solid ${error ? "#9C4F44" : HAIR}`,
+                    fontSize:"1.1rem", textAlign:"center", letterSpacing:"0.15em",
+                    fontFamily:"inherit", outline:"none",
+                    marginBottom: error ? "0.5rem" : "1.25rem",
+                    boxSizing:"border-box", color:INK, background:"#fff",
+                    transition:"border-color 0.2s",
+                  }}
+                />
+                {error && (
+                  <p style={{ color:"#9C4F44", fontSize:"0.8rem", margin:"0 0 1rem" }}>
+                    Fel PIN-kod.{(3 - attempts) > 0 ? ` ${3 - attempts} försök kvar.` : ""}
+                  </p>
+                )}
+              </React.Fragment>
+            )}
+
+            <button type="button" onClick={tryUnlock} disabled={locked}
+              style={{
+                width:"100%", padding:"0.9rem",
+                background: locked ? "#CFC8BA" : NOIR,
+                color:CREAM, border:"none",
+                borderRadius:"2px", fontSize:"1rem", fontWeight:600,
+                cursor: locked ? "not-allowed" : "pointer",
+                fontFamily:"inherit",
+                transition:"all 0.2s",
+              }}
+            >
+              {locked ? `Låst ${secsLeft}s` : "Lås upp →"}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Gemensamma ytor ───────────────────────────────────────────────────────
+    const card     = { background:PAPER, borderRadius:"4px", padding:"1.875rem 2rem", border:`1px solid ${HAIR}` };
+    const heroCard = { background:NOIR, borderRadius:"4px", padding:"2rem", color:CREAM };
+    const eyebrow  = { fontSize:"0.7rem", fontWeight:500, textTransform:"uppercase",
+                       letterSpacing:"0.14em", color:INK3, marginBottom:"0.75rem" };
+    const bigNum   = { fontFamily:SERIF, fontWeight:300, fontSize:"clamp(2.6rem,7vw,4rem)",
+                       lineHeight:1, letterSpacing:"-0.015em", display:"block" };
+    const secNum   = { fontFamily:SERIF, fontWeight:400, fontSize:"1.5rem", color:INK, lineHeight:1.1 };
+    const outLabel = { fontSize:"0.72rem", fontWeight:600, color:INK3,
+                       textTransform:"uppercase", letterSpacing:"0.06em", marginTop:"0.2rem" };
+    const split    = { display:"grid", gridTemplateColumns:"1fr 1fr", gap:"2.5rem", alignItems:"start" };
+
+    function KeyRow({ k, v, neg }) {
+      return (
+        <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between",
+          gap:"1rem", padding:"0.8rem 0", borderBottom:`1px solid ${HAIR2}` }}>
+          <span style={{ fontSize:"0.86rem", color:INK2 }}>{k}</span>
+          <span style={{ fontFamily:SERIF, fontSize:"1.25rem", color: neg ? PINK : INK, whiteSpace:"nowrap" }}>{v}</span>
+        </div>
+      );
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 1. För annonsörer
+    // ══════════════════════════════════════════════════════════════════════════
+    function AdvertiserCalc() {
+      const [title,   setTitle]   = useLS("med_ex_title",  "Läkartidningen");
+      const [price,   setPrice]   = useLS("med_ex_price",   38000);
+      const [runs,    setRuns]    = useLS("med_ex_runs",        6);
+      const [reach,   setReach]   = useLS("med_ex_reach",   14000);
+      const [resp,    setResp]    = useLS("med_ex_resp",      0.1);
+      const [conv,    setConv]    = useLS("med_ex_conv",       20);
+      const [order,   setOrder]   = useLS("med_ex_order",  120000);
+
+      const cost      = price * runs;
+      const contacts  = reach * runs;               // exponeringar, för CPM
+      const leads     = reach * (resp / 100);       // unika läsare som hör av sig
+      const customers = leads * (conv / 100);
+      const revenue   = customers * order;
+      const net       = revenue - cost;
+      const roi       = cost > 0 ? (net / cost) * 100 : 0;
+      const beCust    = order > 0 ? cost / order : 0;
+      const cpm       = contacts > 0 ? (cost / contacts) * 1000 : 0;
+
+      const aCust = useCountUp(customers);
+      const aRev  = useCountUp(revenue);
+      const aRoi  = useCountUp(roi);
+
+      return (
+        <div style={{ maxWidth:1000, margin:"0 auto" }}>
+          <div className="print-header">
+            <Wordmark size="2rem" />
+            <div style={{ fontSize:"1rem", color:INK2 }}>Annonskalkyl · {new Date().toLocaleDateString("sv-SE")}</div>
+          </div>
+
+          <div style={{ textAlign:"center", marginBottom:"2.75rem" }}>
+            <h1 style={{ fontFamily:SERIF, fontSize:"clamp(1.85rem,5vw,3.1rem)", fontWeight:300,
+              color:INK, margin:"0 0 1rem", lineHeight:1.12, letterSpacing:"-0.01em" }}>
+              Vad annonsen behöver ge tillbaka<span style={{ color:PINK }}>.</span>
+            </h1>
+            <p style={{ color:INK2, fontSize:"1rem", maxWidth:"52ch", margin:"0 auto" }}>
+              Räkna på införandet innan ni bokar det. Ni fyller i era egna siffror, kalkylen visar
+              vad annonsen minst behöver ge för att gå ihop.
+            </p>
+          </div>
+
+          <div className="split" style={split}>
+            <div style={card}>
+              <div style={eyebrow}>Era siffror</div>
+              <SelectInput label="Titel" value={title} onChange={setTitle} options={TITLES} />
+              <SliderInput label="Pris per införande" value={price} min={0} max={300000} step={1000}
+                onChange={setPrice} suffix="kr" />
+              <SliderInput label="Antal införanden" value={runs} min={1} max={24} step={1}
+                onChange={setRuns} suffix="st" />
+              <SliderInput label="Unika läsare i er målgrupp" value={reach} min={0} max={100000} step={500}
+                onChange={setReach} suffix="st" hint="Enligt titelns mediakit" />
+              <SliderInput label="Andel av dem som hör av sig" value={resp} min={0} max={3} step={0.05}
+                onChange={setResp} suffix="%" hint="Fler införanden ökar chansen att bli sedd, höj då responsen" />
+              <SliderInput label="Andel av dem som blir kund" value={conv} min={0} max={100} step={1}
+                onChange={setConv} suffix="%" />
+              <SliderInput label="Snittaffär per kund" value={order} min={0} max={2000000} step={5000}
+                onChange={setOrder} suffix="kr" />
+            </div>
+
+            <div>
+              <div style={heroCard}>
+                <div style={{ ...eyebrow, color:"rgba(241,236,227,0.62)" }}>
+                  Så många kunder krävs för att gå jämnt ut
+                </div>
+                <span style={bigNum}>{beCust < 10 ? dec1(beCust) : sek(beCust)}</span>
+                <div style={{ fontFamily:SERIF, fontStyle:"italic", fontWeight:300,
+                  fontSize:"1.35rem", color:"rgba(241,236,227,0.76)", marginTop:"0.6rem" }}>
+                  nya kunder
+                </div>
+
+                <BreakEven actual={customers} breakeven={beCust} label="Väntat utfall" />
+
+                <p style={{ marginTop:"1.4rem", paddingTop:"1.1rem",
+                  borderTop:"1px solid rgba(241,236,227,0.18)", fontSize:"0.9rem",
+                  color:"rgba(241,236,227,0.82)", lineHeight:1.55 }}>
+                  {customers >= beCust
+                    ? <React.Fragment>Era antaganden ger <strong style={{ color:ROSA, fontWeight:500 }}>{dec1(aCust)} kunder</strong>, alltså över nollpunkten. Annonsen bär sig.</React.Fragment>
+                    : <React.Fragment>Era antaganden ger <strong style={{ color:ROSA, fontWeight:500 }}>{dec1(aCust)} kunder</strong>, alltså under nollpunkten. Något behöver upp: priset ner, räckvidden rätt, eller erbjudandet vassare.</React.Fragment>}
+                </p>
+              </div>
+
+              <div style={{ ...card, marginTop:"1.25rem" }}>
+                <KeyRow k="Total annonskostnad" v={sek(cost) + " kr"} />
+                <KeyRow k="Exponeringar i er målgrupp" v={sek(contacts)} />
+                <KeyRow k="Kostnad per tusen exponeringar" v={sek(cpm) + " kr"} />
+                <KeyRow k="Förfrågningar" v={dec1(leads)} />
+                <KeyRow k="Väntade nya kunder" v={dec1(aCust)} />
+                <KeyRow k="Intäkt" v={sek(aRev) + " kr"} />
+                <KeyRow k="Netto efter annonskostnad" v={sek(net) + " kr"} neg={net < 0} />
+                <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between",
+                  gap:"1rem", paddingTop:"0.8rem" }}>
+                  <span style={{ fontSize:"0.86rem", color:INK2 }}>Avkastning</span>
+                  <span style={{ fontFamily:SERIF, fontSize:"1.6rem", color: roi < 0 ? PINK : INK }}>
+                    {sek(aRoi)} %
+                  </span>
+                </div>
+              </div>
+
+              <p style={{ fontSize:"0.75rem", color:INK3, marginTop:"1rem", lineHeight:1.55 }}>
+                Siffrorna kommer från er egen bedömning. Vi publicerar inga utfall för enskilda
+                annonsörer, och kalkylen är ett räkneverktyg, inte ett löfte.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 2. ROI-kalkyl med PDF
+    // ══════════════════════════════════════════════════════════════════════════
+    function OfferCalc() {
+      const [company,  setCompany]  = useLS("med_off_company",  "");
+      const [title,    setTitle]    = useLS("med_off_title",    "Läkartidningen");
+      const [price,    setPrice]    = useLS("med_off_price",    38000);
+      const [runs,     setRuns]     = useLS("med_off_runs",         6);
+      const [reach,    setReach]    = useLS("med_off_reach",    40000);
+      const [target,   setTarget]   = useLS("med_off_target",      35);
+      const [obs,      setObs]      = useLS("med_off_obs",         25);
+      const [resp,     setResp]     = useLS("med_off_resp",         1);
+      const [conv,     setConv]     = useLS("med_off_conv",        10);
+      const [order,    setOrder]    = useLS("med_off_order",   120000);
+      const [months,   setMonths]   = useLS("med_off_months",      36);
+      const [margin,   setMargin]   = useLS("med_off_margin",      45);
+      const [toast,    setToast]    = useState(null);
+
+      const calc = (mult) => {
+        const cost      = price * runs;
+        const audience  = reach * (target / 100);          // unika läsare i målgruppen
+        const contacts  = reach * runs * (target / 100);   // exponeringar, för CPM
+        const seen      = audience * (obs / 100);
+        const responses = seen * (resp / 100) * mult;
+        const customers = responses * (conv / 100) * mult;
+        const perCust   = order * (months / 12) * (margin / 100);
+        const profit    = customers * perCust;
+        const net       = profit - cost;
+        return {
+          cost, audience, contacts, seen, responses, customers, perCust, profit, net,
+          roi: cost > 0 ? (net / cost) * 100 : 0,
+          cpm: contacts > 0 ? (cost / contacts) * 1000 : 0,
+          cac: customers > 0 ? cost / customers : 0,
+          be:  perCust > 0 ? cost / perCust : 0,
+        };
+      };
+
+      const r = calc(1);
+      const aBe   = useCountUp(r.be);
+      const aNet  = useCountUp(r.net);
+      const aCust = useCountUp(r.customers);
+      const aRoi  = useCountUp(r.roi);
+
+      const scenarios = [
+        { label:"Försiktigt",      mult:0.5  },
+        { label:"Era antaganden",  mult:1    },
+        { label:"Bra utfall",      mult:1.75 },
+      ].map(s => Object.assign({}, s, calc(s.mult)));
+
+      function generatePDF() {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('sv-SE', {year:'numeric', month:'long', day:'numeric'});
+        const fmt = (n) => new Intl.NumberFormat('sv-SE').format(Math.round(n)).replace(/[   ]/g,' ');
+
+        const logo = '<div style="font-family:Newsreader,Georgia,serif;font-weight:400;font-size:26px;color:#1A1916;line-height:1">Informa<span style="color:#E85B7D">.</span></div>';
+
+        const css = `
+          @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300;1,6..72,400&family=Inter:wght@400;500;600&display=swap');
+          *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+          html, body { font-family: 'Inter', system-ui, sans-serif; color: #1A1916; background: #F1ECE3;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .doc-hdr { display:flex; justify-content:space-between; align-items:flex-start;
+            padding-bottom:14px; border-bottom:1px solid rgba(26,25,22,0.18); margin-bottom:30px; }
+          .doc-hdr-r { text-align:right; font-size:11px; color:#5C5852; line-height:1.6; }
+          .eyeb { font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8A8579;
+            font-weight:500; margin-bottom:9px; }
+          h1 { font-family:'Newsreader',Georgia,serif; font-weight:300; font-size:40px;
+            line-height:1.1; letter-spacing:-0.01em; margin-bottom:12px; }
+          .lede { font-size:12.5px; color:#5C5852; line-height:1.6; max-width:78%; margin-bottom:30px; }
+          .hero { background:#1E1B19; color:#F1ECE3; padding:26px 28px; margin-bottom:26px; }
+          .hero .eyeb { color:rgba(241,236,227,0.62); }
+          .hero .big { font-family:'Newsreader',Georgia,serif; font-weight:300; font-size:58px;
+            line-height:1; letter-spacing:-0.02em; }
+          .hero .unit { font-family:'Newsreader',Georgia,serif; font-style:italic; font-weight:300;
+            font-size:17px; color:rgba(241,236,227,0.76); margin-top:8px; }
+          .hero .note { font-size:11.5px; color:rgba(241,236,227,0.82); margin-top:18px;
+            padding-top:14px; border-top:1px solid rgba(241,236,227,0.2); line-height:1.6; }
+          .quad { display:grid; grid-template-columns:repeat(4,1fr); gap:0; margin-bottom:26px;
+            border-top:1px solid rgba(26,25,22,0.18); border-bottom:1px solid rgba(26,25,22,0.18); }
+          .qcell { padding:16px 14px; border-right:1px solid rgba(26,25,22,0.08); }
+          .qcell:last-child { border-right:none; }
+          .qnum { font-family:'Newsreader',Georgia,serif; font-weight:400; font-size:24px; line-height:1.1; }
+          .qlab { font-size:8.5px; letter-spacing:0.08em; text-transform:uppercase; color:#8A8579;
+            font-weight:600; margin-top:6px; }
+          table { width:100%; border-collapse:collapse; margin-bottom:26px; }
+          th { font-size:8.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8A8579;
+            font-weight:600; text-align:right; padding:8px 10px;
+            border-bottom:1px solid rgba(26,25,22,0.18); }
+          th:first-child, td:first-child { text-align:left; }
+          td { font-family:'Newsreader',Georgia,serif; font-size:15px; text-align:right;
+            padding:9px 10px; border-bottom:1px solid rgba(26,25,22,0.08); }
+          td:first-child { font-family:'Inter',sans-serif; font-size:11.5px; color:#5C5852; }
+          tr.mid td { font-weight:600; }
+          tr.mid td:first-child { color:#1A1916; font-weight:600; }
+          .assump { display:grid; grid-template-columns:repeat(3,1fr); gap:5px 22px;
+            font-size:10.5px; color:#5C5852; margin-bottom:26px; }
+          .assump span { color:#1A1916; font-weight:600; }
+          .about { border-top:1px solid rgba(26,25,22,0.18); padding-top:16px; }
+          .about p { font-size:10.5px; color:#5C5852; line-height:1.65; max-width:86%; }
+          .foot { position:absolute; bottom:52px; left:76px; right:76px; display:flex;
+            justify-content:space-between; font-size:9px; color:#8A8579;
+            border-top:1px solid rgba(26,25,22,0.08); padding-top:10px; }
+        `;
+
+        const beStr = r.be < 10 ? r.be.toFixed(1).replace('.', ',') : fmt(r.be);
+        const custStr = r.customers < 10 ? r.customers.toFixed(1).replace('.', ',') : fmt(r.customers);
+
+        const rows = scenarios.map(function(s) {
+          const c = s.customers < 10 ? s.customers.toFixed(1).replace('.', ',') : fmt(s.customers);
+          return '<tr' + (s.mult === 1 ? ' class="mid"' : '') + '>' +
+            '<td>' + s.label + '</td>' +
+            '<td>' + c + '</td>' +
+            '<td>' + fmt(s.profit) + ' kr</td>' +
+            '<td>' + fmt(s.net) + ' kr</td>' +
+            '<td>' + fmt(s.roi) + ' %</td>' +
+          '</tr>';
+        }).join('');
+
+        const page1 =
+          '<div class="page" style="position:relative;">' +
+            '<div class="doc-hdr">' + logo +
+              '<div class="doc-hdr-r">' + (company ? (company + '<br>') : '') + title + '<br>' + dateStr + '</div>' +
+            '</div>' +
+            '<div class="eyeb">Annonskalkyl</div>' +
+            '<h1>Vad annonsen behöver<br>ge tillbaka<span style="color:#E85B7D">.</span></h1>' +
+            '<div class="lede">Underlaget bygger på era egna antaganden om räckvidd, respons och affärsvärde. ' +
+              'Poängen är inte att lova ett utfall, utan att visa vad annonsen minst behöver ge för att vara värd pengarna.</div>' +
+
+            '<div class="hero">' +
+              '<div class="eyeb">Så många kunder krävs för att gå jämnt ut</div>' +
+              '<div class="big">' + beStr + '</div>' +
+              '<div class="unit">nya kunder</div>' +
+              '<div class="note">Med era antaganden landar annonsen på ' + custStr + ' kunder, ' +
+                (r.customers >= r.be ? 'alltså över nollpunkten.' : 'alltså under nollpunkten.') +
+              '</div>' +
+            '</div>' +
+
+            '<div class="quad">' +
+              '<div class="qcell"><div class="qnum">' + fmt(r.cost) + ' kr</div><div class="qlab">Annonskostnad</div></div>' +
+              '<div class="qcell"><div class="qnum">' + fmt(r.contacts) + '</div><div class="qlab">Exponeringar i målgruppen</div></div>' +
+              '<div class="qcell"><div class="qnum">' + fmt(r.cpm) + ' kr</div><div class="qlab">Per tusen exponeringar</div></div>' +
+              '<div class="qcell"><div class="qnum">' + fmt(r.roi) + ' %</div><div class="qlab">Avkastning</div></div>' +
+            '</div>' +
+
+            '<div class="eyeb">Tre utfall</div>' +
+            '<table><thead><tr><th>Utfall</th><th>Kunder</th><th>Bruttovinst</th><th>Netto</th><th>Avkastning</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table>' +
+
+            '<div class="eyeb">Antaganden</div>' +
+            '<div class="assump">' +
+              '<div>Pris per införande: <span>' + fmt(price) + ' kr</span></div>' +
+              '<div>Antal införanden: <span>' + runs + ' st</span></div>' +
+              '<div>Läsare per nummer: <span>' + fmt(reach) + '</span></div>' +
+              '<div>Andel i målgrupp: <span>' + target + ' %</span></div>' +
+              '<div>Ser annonsen: <span>' + obs + ' %</span></div>' +
+              '<div>Tar ett steg: <span>' + resp + ' %</span></div>' +
+              '<div>Blir kund: <span>' + conv + ' %</span></div>' +
+              '<div>Snittaffär per år: <span>' + fmt(order) + ' kr</span></div>' +
+              '<div>Kundrelation: <span>' + months + ' mån</span></div>' +
+              '<div>Bruttomarginal: <span>' + margin + ' %</span></div>' +
+            '</div>' +
+
+            '<div class="about">' +
+              '<div class="eyeb">Om Informa</div>' +
+              '<p>Informa driver medieförsäljningen åt några av Sveriges starkaste medievarumärken. ' +
+              'Vi har gjort det sedan 1977 och kan läsarna, annonsörerna och marknaden. ' +
+              'Vi tar inte uppdrag vi inte tror på, och vi säger som det är även när svaret är att ' +
+              'annonsen inte är rätt för er just nu.</p>' +
+            '</div>' +
+
+            '<div class="foot"><span>Informa. Sveriges mest erfarna säljpartner</span>' +
+              '<span>media@informa.se</span></div>' +
+          '</div>';
+
+        const container = document.createElement('div');
+        container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#F1ECE3;';
+        container.innerHTML = '<style>.page{width:794px!important;min-height:1123px;height:1123px!important;padding:61px 76px;overflow:hidden;box-sizing:border-box;background:#F1ECE3}</style><style>' + css + '</style>' + page1;
+        document.body.appendChild(container);
+        setToast('Genererar PDF…');
+
+        const loadLib = (src) => new Promise((res, rej) => {
+          if (document.querySelector('script[src="' + src + '"]')) { res(); return; }
+          const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej;
+          document.head.appendChild(s);
+        });
+
+        Promise.all([
+          loadLib('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
+          loadLib('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'),
+          document.fonts.ready
+        ]).then(function() {
+          const { jsPDF } = window.jspdf;
+          const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+          const pg = container.querySelector('.page');
+          return window.html2canvas(pg, { scale:2, useCORS:true, allowTaint:true,
+            backgroundColor:'#F1ECE3', width:794, height:1123 }).then(function(c1) {
+            pdf.addImage(c1.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, 210, 297);
+            document.body.removeChild(container);
+            pdf.save('Informa-annonskalkyl-' + now.toLocaleDateString('sv-SE') + '.pdf');
+            setToast(null);
+          });
+        }).catch(function() {
+          if (container.parentNode) document.body.removeChild(container);
+          setToast('Fel vid PDF-generering');
+          setTimeout(function() { setToast(null); }, 3000);
+        });
+      }
+
+      return (
+        <div style={{ maxWidth:1000, margin:"0 auto" }}>
+          {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+
+          <div style={{ textAlign:"center", marginBottom:"2.5rem" }}>
+            <h1 style={{ fontFamily:SERIF, fontSize:"clamp(1.6rem,3.5vw,2.4rem)", fontWeight:300,
+              color:INK, letterSpacing:"-0.01em", marginBottom:"0.5rem" }}>
+              ROI-kalkyl för <em style={{ color:PINK, fontWeight:300 }}>annonsören</em>
+            </h1>
+            <p style={{ color:INK2, fontSize:"0.95rem" }}>Hela kedjan från räckvidd till affär. Exporteras som PDF.</p>
+          </div>
+
+          <div className="split" style={split}>
+            <div style={card}>
+              <div style={eyebrow}>Annonsen</div>
+              <TextInput label="Annonsör" value={company} onChange={setCompany} placeholder="Företagsnamn" />
+              <SelectInput label="Titel" value={title} onChange={setTitle} options={TITLES} />
+              <NumberInput label="Pris per införande" value={price} onChange={setPrice} suffix="kr" min={0} step={1000} />
+              <NumberInput label="Antal införanden" value={runs} onChange={setRuns} suffix="st" min={1} step={1} />
+              <NumberInput label="Läsare per nummer" value={reach} onChange={setReach} suffix="st" min={0} step={1000}
+                hint="Enligt mediakit" />
+
+              <div style={{ ...eyebrow, marginTop:"1.75rem", paddingTop:"1.5rem", borderTop:`1px solid ${HAIR2}` }}>Målgruppen</div>
+              <SliderInput label="Andel av läsarna som är er målgrupp" value={target} min={0} max={100} step={1} onChange={setTarget} suffix="%" />
+              <SliderInput label="Andel av dem som ser annonsen" value={obs} min={0} max={100} step={1} onChange={setObs} suffix="%" />
+              <SliderInput label="Andel av dem som tar ett steg" value={resp} min={0} max={25} step={0.25} onChange={setResp} suffix="%"
+                hint="Söker, klickar, svarar, minns er" />
+              <SliderInput label="Andel av dem som blir kund" value={conv} min={0} max={100} step={1} onChange={setConv} suffix="%" />
+
+              <div style={{ ...eyebrow, marginTop:"1.75rem", paddingTop:"1.5rem", borderTop:`1px solid ${HAIR2}` }}>Affären</div>
+              <NumberInput label="Snittaffär per kund och år" value={order} onChange={setOrder} suffix="kr" min={0} step={5000} />
+              <NumberInput label="Kundrelationens längd" value={months} onChange={setMonths} suffix="mån" min={1} step={6} />
+              <SliderInput label="Bruttomarginal" value={margin} min={0} max={100} step={1} onChange={setMargin} suffix="%" />
+            </div>
+
+            <div>
+              <div style={heroCard}>
+                <div style={{ ...eyebrow, color:"rgba(241,236,227,0.62)" }}>
+                  Så många kunder krävs för att gå jämnt ut
+                </div>
+                <span style={bigNum}>{r.be < 10 ? dec1(aBe) : sek(aBe)}</span>
+                <div style={{ fontFamily:SERIF, fontStyle:"italic", fontWeight:300,
+                  fontSize:"1.35rem", color:"rgba(241,236,227,0.76)", marginTop:"0.6rem" }}>
+                  nya kunder
+                </div>
+                <BreakEven actual={r.customers} breakeven={r.be} label="Väntat utfall" />
+                <p style={{ marginTop:"1.4rem", paddingTop:"1.1rem",
+                  borderTop:"1px solid rgba(241,236,227,0.18)", fontSize:"0.9rem",
+                  color:"rgba(241,236,227,0.82)", lineHeight:1.55 }}>
+                  Värdet av en kund över hela relationen: <strong style={{ color:ROSA, fontWeight:500 }}>{sek(r.perCust)} kr</strong> i bruttovinst.
+                </p>
+              </div>
+
+              <div style={{ ...card, marginTop:"1.25rem" }}>
+                <KeyRow k="Total annonskostnad" v={sek(r.cost) + " kr"} />
+                <KeyRow k="Unika läsare i er målgrupp" v={sek(r.audience)} />
+                <KeyRow k="Exponeringar i er målgrupp" v={sek(r.contacts)} />
+                <KeyRow k="Kostnad per tusen exponeringar" v={sek(r.cpm) + " kr"} />
+                <KeyRow k="Ser annonsen" v={sek(r.seen)} />
+                <KeyRow k="Tar ett steg" v={dec1(r.responses)} />
+                <KeyRow k="Väntade nya kunder" v={dec1(aCust)} />
+                <KeyRow k="Kostnad per vunnen kund" v={r.customers > 0 ? sek(r.cac) + " kr" : "n/a"} />
+                <KeyRow k="Bruttovinst" v={sek(r.profit) + " kr"} />
+                <KeyRow k="Netto efter annonskostnad" v={sek(aNet) + " kr"} neg={r.net < 0} />
+                <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between",
+                  gap:"1rem", paddingTop:"0.8rem" }}>
+                  <span style={{ fontSize:"0.86rem", color:INK2 }}>Avkastning</span>
+                  <span style={{ fontFamily:SERIF, fontSize:"1.6rem", color: r.roi < 0 ? PINK : INK }}>
+                    {sek(aRoi)} %
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ ...card, marginTop:"1.25rem" }}>
+                <div style={eyebrow}>Tre utfall</div>
+                <div style={{ overflowX:"auto" }}>
+                  <table style={{ width:"100%", borderCollapse:"collapse", minWidth:340 }}>
+                    <thead>
+                      <tr>
+                        {["Utfall","Kunder","Netto","Avkastning"].map((h, i) => (
+                          <th key={h} style={{ textAlign: i === 0 ? "left" : "right", fontSize:"0.65rem",
+                            letterSpacing:"0.1em", textTransform:"uppercase", color:INK3, fontWeight:600,
+                            padding:"0.5rem 0.4rem", borderBottom:`1px solid ${HAIR}` }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scenarios.map(s => (
+                        <tr key={s.label}>
+                          <td style={{ padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`,
+                            fontSize:"0.85rem", color: s.mult === 1 ? INK : INK2,
+                            fontWeight: s.mult === 1 ? 600 : 400 }}>
+                            {s.mult === 1 && <span style={{ color:PINK }}>→ </span>}{s.label}
+                          </td>
+                          <td style={{ padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`,
+                            textAlign:"right", fontFamily:SERIF, fontSize:"1.05rem" }}>{dec1(s.customers)}</td>
+                          <td style={{ padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`,
+                            textAlign:"right", fontFamily:SERIF, fontSize:"1.05rem",
+                            color: s.net < 0 ? PINK : INK }}>{sek(s.net)} kr</td>
+                          <td style={{ padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`,
+                            textAlign:"right", fontFamily:SERIF, fontSize:"1.05rem",
+                            color: s.roi < 0 ? PINK : INK }}>{sek(s.roi)} %</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="cta-row no-print" style={{ display:"flex", gap:"0.75rem", marginTop:"1.25rem" }}>
+                <button type="button" onClick={generatePDF}
+                  style={{ flex:1, padding:"0.85rem 1.5rem", background:NOIR, color:CREAM,
+                    border:"none", borderRadius:"2px", fontSize:"0.95rem", fontWeight:600,
+                    cursor:"pointer", fontFamily:"inherit" }}>
+                  Ladda ner som PDF
+                </button>
+                <button type="button" onClick={() => window.print()}
+                  style={{ padding:"0.85rem 1.5rem", background:"transparent", color:INK,
+                    border:`1px solid ${HAIR}`, borderRadius:"2px", fontSize:"0.95rem",
+                    fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+                  Skriv ut
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 3. Rekryteringsannons
+    // ══════════════════════════════════════════════════════════════════════════
+    function RecruitCalc() {
+      const [title,   setTitle]   = useLS("med_rek_title",  "Läkartidningen");
+      const [price,   setPrice]   = useLS("med_rek_price",   24000);
+      const [apps,    setApps]    = useLS("med_rek_apps",        6);
+      const [dayCost, setDayCost] = useLS("med_rek_dayCost",  4500);
+      const [days,    setDays]    = useLS("med_rek_days",       20);
+      const [agency,  setAgency]  = useLS("med_rek_agency", 180000);
+      const [prob,    setProb]    = useLS("med_rek_prob",       50);
+      const [toast,   setToast]   = useState(null);
+
+      const calc = (d) => {
+        const saved = dayCost * d;
+        return { saved, net: saved - price };
+      };
+      const r      = calc(days);
+      const be     = dayCost > 0 ? price / dayCost : 0;
+      const roi    = price > 0 ? (r.net / price) * 100 : 0;
+      const perApp = apps > 0 ? price / apps : 0;
+      const share  = agency > 0 ? (price / agency) * 100 : 0;
+      const ev     = (prob / 100) * r.saved - price;
+
+      const aBe  = useCountUp(be);
+      const aNet = useCountUp(r.net);
+
+      const scenarios = [
+        { label:"Försiktigt",       d: Math.round(days * 0.5)  },
+        { label:"Er uppskattning",  d: days                    },
+        { label:"Bra utfall",       d: Math.round(days * 1.75) },
+      ].map(s => Object.assign({}, s, calc(s.d)));
+
+      const handleCopy = () => {
+        const lines = [
+          "INFORMA · Annonskalkyl rekrytering",
+          "Titel:                " + title,
+          "Datum:                " + new Date().toLocaleDateString("sv-SE"),
+          "",
+          "Annonskostnad:        " + sek(price) + " kr",
+          "Vakanskostnad/dag:    " + sek(dayCost) + " kr",
+          "Nollpunkt:            " + dec1(be) + " dagars kortare vakans",
+          "Er uppskattning:      " + days + " dagar",
+          "Sparad vakanskostnad: " + sek(r.saved) + " kr",
+          "Netto:                " + sek(r.net) + " kr",
+          "Per kvalificerad sökande: " + sek(perApp) + " kr",
+        ].join("\n");
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(lines).then(
+            () => setToast("Kopierat till urklipp"),
+            () => setToast("Kunde inte kopiera")
+          );
+        } else { setToast("Kunde inte kopiera"); }
+      };
+
+      return (
+        <div style={{ maxWidth:1000, margin:"0 auto" }}>
+          {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+
+          <div style={{ textAlign:"center", marginBottom:"2.5rem" }}>
+            <h1 style={{ fontFamily:SERIF, fontSize:"clamp(1.6rem,3.5vw,2.4rem)", fontWeight:300,
+              color:INK, letterSpacing:"-0.01em", marginBottom:"0.5rem" }}>
+              Platsannonsen betalar sig på <em style={{ color:PINK, fontWeight:300 }}>tid</em>
+            </h1>
+            <p style={{ color:INK2, fontSize:"0.95rem", maxWidth:"50ch", margin:"0 auto" }}>
+              En vakans kostar varje dag den står tom. Räkna på vad dagarna kostar, så blir annonspriset en siffra att jämföra med.
+            </p>
+          </div>
+
+          <div className="split" style={split}>
+            <div style={card}>
+              <div style={eyebrow}>Annonsen</div>
+              <SelectInput label="Titel" value={title} onChange={setTitle} options={TITLES} />
+              <NumberInput label="Annonskostnad" value={price} onChange={setPrice} suffix="kr" min={0} step={1000} />
+              <NumberInput label="Kvalificerade sökande ni väntar er" value={apps} onChange={setApps} suffix="st" min={0} step={1}
+                hint="De som matchar kravprofilen" />
+
+              <div style={{ ...eyebrow, marginTop:"1.75rem", paddingTop:"1.5rem", borderTop:`1px solid ${HAIR2}` }}>Vakansen</div>
+              <NumberInput label="Vad en dag utan personen kostar" value={dayCost} onChange={setDayCost} suffix="kr" min={0} step={500}
+                hint="Hyrpersonal, övertid, utebliven intäkt" />
+              <SliderInput label="Antal dagar annonsen kortar vakansen" value={days} min={0} max={120} step={1}
+                onChange={setDays} suffix="dgr" />
+
+              <div style={{ ...eyebrow, marginTop:"1.75rem", paddingTop:"1.5rem", borderTop:`1px solid ${HAIR2}` }}>Alternativet</div>
+              <NumberInput label="Arvode om ni går via rekryteringsbyrå" value={agency} onChange={setAgency} suffix="kr" min={0} step={10000}
+                hint="Sätt 0 om det inte är aktuellt" />
+              <SliderInput label="Sannolikhet att annonsen ensam löser rekryteringen" value={prob} min={0} max={100} step={5}
+                onChange={setProb} suffix="%" />
+            </div>
+
+            <div>
+              <div style={heroCard}>
+                <div style={{ ...eyebrow, color:"rgba(241,236,227,0.62)" }}>
+                  Annonsen betalar sig om den kortar vakansen med
+                </div>
+                <span style={bigNum}>{be < 10 ? dec1(aBe) : sek(aBe)}</span>
+                <div style={{ fontFamily:SERIF, fontStyle:"italic", fontWeight:300,
+                  fontSize:"1.35rem", color:"rgba(241,236,227,0.76)", marginTop:"0.6rem" }}>
+                  dagar
+                </div>
+                <BreakEven actual={days} breakeven={be} label="Er uppskattning" />
+                <p style={{ marginTop:"1.4rem", paddingTop:"1.1rem",
+                  borderTop:"1px solid rgba(241,236,227,0.18)", fontSize:"0.9rem",
+                  color:"rgba(241,236,227,0.82)", lineHeight:1.55 }}>
+                  Ni räknar med <strong style={{ color:ROSA, fontWeight:500 }}>{sek(days)} dagar</strong>,
+                  {days >= be ? " alltså över nollpunkten." : " alltså under nollpunkten."}
+                </p>
+              </div>
+
+              <div style={{ ...card, marginTop:"1.25rem" }}>
+                <KeyRow k="Sparad vakanskostnad" v={sek(r.saved) + " kr"} />
+                <KeyRow k="Netto efter annonskostnad" v={sek(aNet) + " kr"} neg={r.net < 0} />
+                <KeyRow k="Avkastning" v={sek(roi) + " %"} neg={roi < 0} />
+                <KeyRow k="Kostnad per kvalificerad sökande" v={apps > 0 ? sek(perApp) + " kr" : "n/a"} />
+                <KeyRow k="Annonsen som andel av byråarvodet" v={agency > 0 ? sek(share) + " %" : "n/a"} />
+                <KeyRow k="Väntat värde, justerat för sannolikhet" v={sek(ev) + " kr"} neg={ev < 0} />
+              </div>
+
+              <div style={{ ...card, marginTop:"1.25rem" }}>
+                <div style={eyebrow}>Tre utfall</div>
+                <div style={{ overflowX:"auto" }}>
+                  <table style={{ width:"100%", borderCollapse:"collapse", minWidth:320 }}>
+                    <thead>
+                      <tr>
+                        {["Utfall","Dagar","Sparat","Netto"].map((h, i) => (
+                          <th key={h} style={{ textAlign: i === 0 ? "left" : "right", fontSize:"0.65rem",
+                            letterSpacing:"0.1em", textTransform:"uppercase", color:INK3, fontWeight:600,
+                            padding:"0.5rem 0.4rem", borderBottom:`1px solid ${HAIR}` }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scenarios.map((s, i) => (
+                        <tr key={s.label}>
+                          <td style={{ padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`,
+                            fontSize:"0.85rem", color: i === 1 ? INK : INK2, fontWeight: i === 1 ? 600 : 400 }}>
+                            {i === 1 && <span style={{ color:PINK }}>→ </span>}{s.label}
+                          </td>
+                          <td style={{ padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`,
+                            textAlign:"right", fontFamily:SERIF, fontSize:"1.05rem" }}>{sek(s.d)}</td>
+                          <td style={{ padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`,
+                            textAlign:"right", fontFamily:SERIF, fontSize:"1.05rem" }}>{sek(s.saved)} kr</td>
+                          <td style={{ padding:"0.6rem 0.4rem", borderBottom:`1px solid ${HAIR2}`,
+                            textAlign:"right", fontFamily:SERIF, fontSize:"1.05rem",
+                            color: s.net < 0 ? PINK : INK }}>{sek(s.net)} kr</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="cta-row no-print" style={{ display:"flex", gap:"0.75rem", marginTop:"1.25rem" }}>
+                <button type="button" onClick={handleCopy}
+                  style={{ flex:1, padding:"0.85rem 1.5rem", background:NOIR, color:CREAM,
+                    border:"none", borderRadius:"2px", fontSize:"0.95rem", fontWeight:600,
+                    cursor:"pointer", fontFamily:"inherit" }}>
+                  Kopiera kalkylen
+                </button>
+                <button type="button" onClick={() => window.print()}
+                  style={{ padding:"0.85rem 1.5rem", background:"transparent", color:INK,
+                    border:`1px solid ${HAIR}`, borderRadius:"2px", fontSize:"0.95rem",
+                    fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+                  Skriv ut
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 4. Säljstöd internt
+    // ══════════════════════════════════════════════════════════════════════════
+    function InternalCalc() {
+      const [client,   setClient]   = useLS("med_int_client",   "");
+      const [seller,   setSeller]   = useLS("med_int_seller",   "");
+      const [title,    setTitle]    = useLS("med_int_title",    "Läkartidningen");
+      const [model,    setModel]    = useLS("med_int_model",    "provision");
+      const [revenue,  setRevenue]  = useLS("med_int_revenue",  38000);
+      const [runs,     setRuns]     = useLS("med_int_runs",         6);
+      const [commPct,  setCommPct]  = useLS("med_int_commPct",     25);
+      const [fixedFee, setFixedFee] = useLS("med_int_fixedFee",  9000);
+      const [hours,    setHours]    = useLS("med_int_hours",        4);
+      const [hCost,    setHCost]    = useLS("med_int_hCost",      650);
+      const [prodCost, setProdCost] = useLS("med_int_prodCost",     0);
+      const [toast,    setToast]    = useState(null);
+
+      const isProv = model === "provision";
+
+      // Intäkt till Informa
+      const grossPerRun  = revenue;
+      const grossTotal   = grossPerRun * runs;
+      const incomePerRun = isProv ? grossPerRun * (commPct / 100) : fixedFee;
+      const incomeTotal  = incomePerRun * runs;
+      // Kostnad
+      const costPerRun   = hours * hCost + prodCost;
+      const costTotal    = costPerRun * runs;
+      // Resultat
+      const tbPerRun     = incomePerRun - costPerRun;
+      const tbTotal      = incomeTotal - costTotal;
+      const marginPct    = incomeTotal > 0 ? (tbTotal / incomeTotal) * 100 : 0;
+      const tbPerHour    = hours > 0 ? tbPerRun / hours : 0;
+
+      const score = marginPct >= 50
+        ? { label:"Bra deal",   color:"#3E6B4A", bg:"#EDF2EA", border:"#C3D2BD" }
+        : marginPct >= 30
+          ? { label:"Okej deal", color:"#8F7430", bg:"#F6F0DF", border:"#DDCC9E" }
+          : { label:"Svag deal", color:"#9C4F44", bg:"#F5E9E5", border:"#DDBBB1" };
+
+      const aIncome = useCountUp(incomeTotal);
+      const aTb     = useCountUp(tbTotal);
+      const aMargin = useCountUp(marginPct);
+      const aHour   = useCountUp(tbPerHour);
+
+      const handleCopy = () => {
+        const sep = "═".repeat(40);
+        const modelLines = isProv
+          ? ["Modell:               Provision",
+             "Annonsintäkt/inf.:   " + sek(grossPerRun) + " kr",
+             "Provision:            " + commPct + " %"]
+          : ["Modell:               Fast arvode",
+             "Arvode per införande: " + sek(fixedFee) + " kr"];
+        const lines = [
+          sep,
+          "  INFORMA · Medieförsäljning, intern kalkyl",
+          sep,
+          client ? ("Annonsör:             " + client) : null,
+          seller ? ("Säljare:              " + seller) : null,
+          "Titel:                " + title,
+          "Datum:                " + new Date().toLocaleDateString("sv-SE"),
+          "",
+        ].concat(modelLines).concat([
+          "Antal införanden:     " + runs + " st",
+          "Säljtid per införande: " + hours + " tim à " + sek(hCost) + " kr",
+          "Produktionskostnad:   " + sek(prodCost) + " kr/införande",
+          "",
+          "Intäkt till Informa:  " + sek(incomeTotal) + " kr",
+          "Kostnad:              " + sek(costTotal) + " kr",
+          "Täckningsbidrag:      " + sek(tbTotal) + " kr",
+          "Marginal:             " + sek(marginPct) + " %",
+          "TB per säljtimme:     " + sek(tbPerHour) + " kr",
+          "Bedömning:            " + score.label,
+          sep,
+        ]).filter(Boolean).join("\n");
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(lines).then(
+            () => setToast("Kopierat till urklipp"),
+            () => setToast("Kunde inte kopiera")
+          );
+        } else { setToast("Kunde inte kopiera"); }
+      };
+
+      const handleReset = () => {
+        setClient(""); setSeller(""); setTitle("Läkartidningen"); setModel("provision");
+        setRevenue(38000); setRuns(6); setCommPct(25); setFixedFee(9000);
+        setHours(4); setHCost(650); setProdCost(0);
+        setToast("Nollställt");
+      };
+
+      return (
+        <div style={{ maxWidth:1000, margin:"0 auto" }}>
+          {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+
+          <div style={{ textAlign:"center", marginBottom:"2.5rem" }}>
+            <h1 style={{ fontFamily:SERIF, fontSize:"clamp(1.6rem,3.5vw,2.4rem)", fontWeight:300,
+              color:INK, letterSpacing:"-0.01em", marginBottom:"0.5rem" }}>
+              Vad affären ger <em style={{ color:PINK, fontWeight:300 }}>oss</em>
+            </h1>
+            <p style={{ color:INK2, fontSize:"0.95rem" }}>Internt underlag. Visas aldrig för kund.</p>
+          </div>
+
+          <div className="split" style={split}>
+            <div style={card}>
+              <div style={eyebrow}>Affären</div>
+              <TextInput label="Annonsör" value={client} onChange={setClient} placeholder="Företagsnamn" />
+              <TextInput label="Säljare" value={seller} onChange={setSeller} placeholder="Namn" />
+              <SelectInput label="Titel" value={title} onChange={setTitle} options={TITLES} />
+
+              <div style={{ marginBottom:"1.25rem" }}>
+                <div style={{ marginBottom:"0.4rem", fontSize:"0.84rem", fontWeight:500, color:INK2 }}>Ersättningsmodell</div>
+                <div style={{ display:"flex", border:`1px solid ${HAIR}`, borderRadius:"2px", padding:"3px", gap:"2px" }}>
+                  {[{id:"provision",label:"Provision"},{id:"fast",label:"Fast arvode"}].map(m => (
+                    <button key={m.id} type="button" onClick={() => setModel(m.id)}
+                      style={{ flex:1, padding:"0.5rem", borderRadius:"2px", border:"none", cursor:"pointer",
+                        fontFamily:"inherit", fontSize:"0.85rem", fontWeight:500,
+                        background: model === m.id ? NOIR : "transparent",
+                        color: model === m.id ? CREAM : INK2, transition:"all 0.2s" }}>
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {isProv ? (
+                <React.Fragment>
+                  <NumberInput label="Annonsintäkt per införande" value={revenue} onChange={setRevenue} suffix="kr" min={0} step={1000}
+                    hint="Det kunden betalar titeln" />
+                  <SliderInput label="Provision till Informa" value={commPct} min={0} max={100} step={1} onChange={setCommPct} suffix="%" />
+                </React.Fragment>
+              ) : (
+                <NumberInput label="Arvode per införande" value={fixedFee} onChange={setFixedFee} suffix="kr" min={0} step={500} />
+              )}
+
+              <NumberInput label="Antal införanden" value={runs} onChange={setRuns} suffix="st" min={1} step={1} />
+
+              <div style={{ ...eyebrow, marginTop:"1.75rem", paddingTop:"1.5rem", borderTop:`1px solid ${HAIR2}` }}>Vår kostnad</div>
+              <NumberInput label="Säljtid per införande" value={hours} onChange={setHours} suffix="tim" min={0} step={0.5} />
+              <NumberInput label="Kostnad per säljtimme" value={hCost} onChange={setHCost} suffix="kr" min={0} step={50} />
+              <NumberInput label="Produktionskostnad per införande" value={prodCost} onChange={setProdCost} suffix="kr" min={0} step={500}
+                hint="Material, annonsproduktion" />
+            </div>
+
+            <div>
+              <div style={heroCard}>
+                <div style={{ ...eyebrow, color:"rgba(241,236,227,0.62)" }}>Täckningsbidrag på affären</div>
+                <span style={bigNum}>{sek(aTb)}</span>
+                <div style={{ fontFamily:SERIF, fontStyle:"italic", fontWeight:300,
+                  fontSize:"1.35rem", color:"rgba(241,236,227,0.76)", marginTop:"0.6rem" }}>
+                  kronor
+                </div>
+                <p style={{ marginTop:"1.4rem", paddingTop:"1.1rem",
+                  borderTop:"1px solid rgba(241,236,227,0.18)", fontSize:"0.9rem",
+                  color:"rgba(241,236,227,0.82)", lineHeight:1.55 }}>
+                  Marginal <strong style={{ color:ROSA, fontWeight:500 }}>{sek(aMargin)} %</strong>,
+                  och <strong style={{ color:ROSA, fontWeight:500 }}>{sek(aHour)} kr</strong> per säljtimme.
+                </p>
+              </div>
+
+              <div style={{ background:score.bg, border:`1px solid ${score.border}`, borderRadius:"2px",
+                padding:"1rem 1.25rem", marginTop:"1.25rem", display:"flex",
+                alignItems:"center", justifyContent:"space-between", gap:"1rem" }}>
+                <span style={{ fontSize:"0.8rem", color:score.color, fontWeight:500 }}>Bedömning</span>
+                <span style={{ fontSize:"1.05rem", color:score.color, fontWeight:600 }}>{score.label}</span>
+              </div>
+
+              <div style={{ ...card, marginTop:"1.25rem" }}>
+                <KeyRow k="Annonsvärde totalt" v={sek(grossTotal) + " kr"} />
+                <KeyRow k="Intäkt till Informa" v={sek(aIncome) + " kr"} />
+                <KeyRow k="Intäkt per införande" v={sek(incomePerRun) + " kr"} />
+                <KeyRow k="Vår kostnad" v={sek(costTotal) + " kr"} />
+                <KeyRow k="Täckningsbidrag per införande" v={sek(tbPerRun) + " kr"} neg={tbPerRun < 0} />
+                <KeyRow k="Täckningsbidrag totalt" v={sek(tbTotal) + " kr"} neg={tbTotal < 0} />
+                <KeyRow k="Marginal" v={sek(marginPct) + " %"} neg={marginPct < 0} />
+                <KeyRow k="TB per säljtimme" v={sek(tbPerHour) + " kr"} neg={tbPerHour < 0} />
+              </div>
+
+              <div className="cta-row no-print" style={{ display:"flex", gap:"0.75rem", marginTop:"1.25rem" }}>
+                <button type="button" onClick={handleCopy}
+                  style={{ flex:1, padding:"0.85rem 1.5rem", background:NOIR, color:CREAM,
+                    border:"none", borderRadius:"2px", fontSize:"0.95rem", fontWeight:600,
+                    cursor:"pointer", fontFamily:"inherit" }}>
+                  Kopiera kalkylen
+                </button>
+                <button type="button" onClick={handleReset}
+                  style={{ padding:"0.85rem 1.5rem", background:"transparent", color:INK,
+                    border:`1px solid ${HAIR}`, borderRadius:"2px", fontSize:"0.95rem",
+                    fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+                  Nollställ
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ────────── App ────────────────────────────────────────────────────────────
+    function App() {
+      const [tab, setTab] = useState(() => {
+        const t = new URLSearchParams(window.location.search).get("tab");
+        return ["annons","roi","rekrytering","internal"].includes(t) ? t : "annons";
+      });
+      const [unlocked, setUnlocked] = useState(false);
+      if (!unlocked) return <PinScreen onUnlock={() => setUnlocked(true)} />;
+
+      const TABS = [
+        { id:"annons",      label:"För annonsörer" },
+        { id:"roi",         label:"ROI-kalkyl" },
+        { id:"rekrytering", label:"Rekrytering" },
+        { id:"internal",    label:"Säljstöd" },
+      ];
+
+      return (
+        <div style={{ position:"relative", zIndex:1, minHeight:"100vh" }}>
+          <header className="no-print" style={{ position:"sticky", top:0, zIndex:100,
+            background:"rgba(241,236,227,0.92)",
+            backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
+            borderBottom:`1px solid ${HAIR}` }}>
+            <div style={{ maxWidth:1140, margin:"0 auto", padding:"0 1.5rem",
+              minHeight:68, display:"flex", alignItems:"center", justifyContent:"space-between",
+              gap:"1rem", flexWrap:"wrap" }}>
+              <div style={{ userSelect:"none", lineHeight:0, padding:"0.75rem 0" }}>
+                <Wordmark size="1.65rem" />
+              </div>
+              <nav style={{ display:"flex", border:`1px solid ${HAIR}`, background:PAPER,
+                borderRadius:"2px", padding:"3px", gap:"2px", flexWrap:"wrap" }}>
+                {TABS.map(item => (
+                  <button key={item.id} type="button" onClick={() => setTab(item.id)}
+                    style={{ padding:"0.45rem 1.1rem", borderRadius:"2px", border:"none",
+                      cursor:"pointer", fontWeight:500, fontSize:"0.875rem", fontFamily:"inherit",
+                      background: tab === item.id ? NOIR : "transparent",
+                      color: tab === item.id ? CREAM : INK2,
+                      transition:"all 0.2s" }}>
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+          </header>
+
+          <main style={{ maxWidth:1140, margin:"0 auto", padding:"2.75rem 1.5rem 5rem" }}>
+            {tab === "annons"      && <div className="tab-in" key="a"><AdvertiserCalc /></div>}
+            {tab === "roi"         && <div className="tab-in" key="b"><OfferCalc /></div>}
+            {tab === "rekrytering" && <div className="tab-in" key="c"><RecruitCalc /></div>}
+            {tab === "internal"    && <div className="tab-in" key="d"><InternalCalc /></div>}
+
+            <div className="no-print" style={{ maxWidth:1000, margin:"3.5rem auto 0",
+              paddingTop:"1.5rem", borderTop:`1px solid ${HAIR}`, display:"flex",
+              justifyContent:"space-between", alignItems:"center", gap:"1rem", flexWrap:"wrap" }}>
+              <span style={{ fontFamily:SERIF, fontStyle:"italic", fontWeight:300,
+                color:INK2, fontSize:"0.95rem" }}>
+                Vi säger som det är <span style={{ color:PINK, fontStyle:"normal" }}>&#10022;</span>
+              </span>
+              <span style={{ fontSize:"0.8rem", color:INK3 }}>media@informa.se</span>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
